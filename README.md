@@ -114,7 +114,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```

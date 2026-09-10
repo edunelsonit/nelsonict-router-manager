@@ -1,6 +1,6 @@
 # Validation record
 
-- 85 Python unit and local HTTP integration tests passed.
+- 93 Python unit and local HTTP integration tests passed.
 - Python compilation checks passed.
 - Frontend JavaScript syntax check passed.
 - HTTP tests exercised demo connect, plan, apply, voucher creation, user disable, rollback, disconnect, and rejection without an access token or Origin header.
@@ -8,7 +8,7 @@
 - No real RouterOS device was accessible. No RouterOS 7.24.2 certification is claimed.
 - Windows/macOS execution is unverified. Previous remote CI attempts failed before test steps started; local results are independent of GitHub Actions.
 
-Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan` from the project root. See ACCEPTANCE.md for the hardware release gate.
+Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing` from the project root. See ACCEPTANCE.md for the hardware release gate.
 
 ## v0.2 scope
 
@@ -25,3 +25,7 @@ Mobile transport tests also verified a real local HTTPS request with certificate
 17 additional tests cover fragmented binary API frames, UTF-8, reply limits, sanitized traps, modern login ordering, TLS pin rejection before credentials, command/query mapping, private-address constraints and HTTP request construction. They use mocked sockets/connections rather than RouterOS hardware. Installer tests cover simulated copy/upload/readback/activation/restore, persistent-folder selection, occupied destinations, stale source metadata, failed copy, failed readback and profile drift. All 85 tests and Python/JavaScript syntax checks passed locally.
 
 Hardware acceptance remains required for native `file/copy` command arguments and support, file permissions and content editing, API-SSL certificates, real captive login and reboot persistence. No browser visual pass is claimed.
+
+## Profile pricing
+
+Eight added tests cover decimal validation, zero/removal, router-scoped persistence, demo isolation, frozen batch prices, tracked-profile inheritance and escaped printing. All 93 local tests passed. No real browser/printer test is claimed.

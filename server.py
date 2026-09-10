@@ -22,6 +22,8 @@ TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
+from pricing import PriceStore, validate_price, profile_key
+
 from portal_install import prepare as prepare_portal, deploy as deploy_portal
 
 class DemoRouter:
@@ -161,6 +163,14 @@ def ticket_action(r,data):
         entry['state']='partial' if entry['state']=='account-updated' else 'uncertain';journal['save']();raise
     return {'ok':True,'journal':journal['id'],'action':action}
 
+def profile_prices():
+    if STATE['demo']:return STATE.setdefault('demo_prices',{})
+    return PriceStore(DATA/'prices',STATE['host'],STATE['identity']).read()
+
+def save_profile_prices(values):
+    if STATE['demo']:STATE['demo_prices']=values
+    else:PriceStore(DATA/'prices',STATE['host'],STATE['identity']).write(values)
+
 def route(path,data):
     if path=='/api/templates/list':return {'templates':TemplateStore(DATA/'templates').list()}
     if path=='/api/templates/save':return {'template':TemplateStore(DATA/'templates').save(data.get('template'))}
@@ -174,13 +184,26 @@ def route(path,data):
         STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False)
         return public_status()
     if path=='/api/demo':
-        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={})
+        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={},demo_prices={})
         return public_status()
     if path=='/api/disconnect':
         STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None,demo=False,last_journal=None)
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
+    if path=='/api/profiles/prices':
+        prices=profile_prices()
+        return {'profiles':[{'id':x['.id'],'name':x['name'],'price':prices.get(profile_key(x))} for x in r.call('ip/hotspot/user/profile')]}
+    if path=='/api/profiles/price':
+        profile=next((x for x in r.call('ip/hotspot/user/profile') if x.get('.id')==data.get('id') and x.get('name')==data.get('name')),None)
+        if not profile:raise ValidationError('Profile changed or no longer exists. Refresh the profile list.')
+        price=None if data.get('amount')=='' else validate_price(data.get('amount'),data.get('currency'))
+        prices=profile_prices();key=profile_key(profile)
+        if price is None:prices.pop(key,None)
+        else:prices[key]=price
+        save_profile_prices(prices)
+        return {'ok':True,'price':price}
+
     if path=='/api/plan':
         STATE['plan']=None
         current=snapshot(r)
@@ -273,6 +296,10 @@ def route(path,data):
                 if policy['mode']!='connected':op['values']['limit-uptime']='0s'
                 voucher.update(profile=profile_op['values']['name'],policy=policy['mode'],allowance=data.get('duration','1d') if policy['mode'] in ('elapsed','connected') else policy['mode'])
             operations.insert(0,profile_op)
+        price=profile_prices().get(profile_key(base))
+        for voucher in vouchers:
+            voucher['base_profile']=profile
+            if price:voucher.update(price_amount=price['amount'],currency=price['currency'],price_label=price['label'])
         journal=new_journal('vouchers')
         execute(r,operations,journal)
         return {'vouchers':vouchers,'journal':journal['id'],'demo':STATE['demo']}

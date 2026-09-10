@@ -69,3 +69,11 @@ Automated tests cover escaped templates, credential generation, saved-template p
 Reference: [MikroTik Hotspot customization: servlet pages, CHAP and support files](https://help.mikrotik.com/docs/spaces/ROS/pages/87162881/Hotspot+customisation).
 
 Transport and file operations: [RouterOS API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API), [RouterOS Files](https://help.mikrotik.com/docs/spaces/ROS/pages/2555971/Files).
+
+## User profile selling prices
+
+In **Vouchers & users → User profile prices**, select a profile, enter its price and currency (NGN by default), then save. For example, you can assign daily/three-day/weekly/monthly profiles NGN 500/1,000/2,000/5,000. These are selling prices only; configure the ticket duration separately.
+
+Prices appear beside profiles and automatically flow into newly generated tickets, print previews and CSV exports. Tracked expiry batches retain the selected base profile's price even though the router uses a dedicated batch profile. Later price changes do not alter an existing batch. A saved price overrides the template fallback price; without a saved profile price, the template label is used. Zero prints as NGN 0.00; saving a blank amount removes the profile price.
+
+Prices are local application metadata, scoped to router IP/identity and profile ID/name, stored under `data/prices`. They do not change RouterOS settings or collect payments. Back up this folder when moving the backend. A router IP/identity or profile change requires checking/re-entering prices. Owner phones using the same backend share these prices; separate installations do not synchronize them.

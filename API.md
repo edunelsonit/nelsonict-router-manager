@@ -55,3 +55,9 @@ See [TEMPLATES.md](TEMPLATES.md) for template routes, portal activation and cred
 `POST /api/connect` accepts `host`, `username`, `password`, optional `transport` (`api`, `api-ssl`, `http`, `https`), optional `port`, and optional TLS `fingerprint`. Omitted transport retains HTTPS for existing clients; the new UI selects API by default. Omitted port follows the chosen service. Status includes transport. Plain transports are limited to private IPv4 LAN addresses.
 
 `POST /api/portal/prepare` accepts `server` and a validated `template`, returning a ten-minute, connection-bound plan. `POST /api/portal/deploy` accepts `plan_id` and `confirmation: "INSTALL PORTAL"`. Plans are consumed before writing. The result includes `journal` and `directory`. A portal-deploy journal restores only the profile activation; copied/uploaded files are retained. Existing manual portal endpoints remain available.
+
+## Profile prices
+
+`POST /api/profiles/prices` lists existing user profiles with `id`, `name` and optional `price` (`amount`, `currency`, `label`). `POST /api/profiles/price` accepts matching `id` and `name`, decimal-string `amount` (0–999999999.99; at most two decimals), and uppercase three-letter `currency`. Empty amount removes the saved price. These routes require the normal owner token and a router connection.
+
+New vouchers include `base_profile` and, when priced, `price_amount`, `currency`, and `price_label`. The price is copied server-side from the selected base profile and takes precedence over the template price during rendering. Prices are stored on the backend, not in router credentials or expiry comments.

@@ -96,7 +96,7 @@ def print_html(raw,rows=None,demo=False):
         extras=''
         if t['show_policy']:extras+=f'<p>{escape(str(row.get("allowance","")))} · {escape(str(row.get("policy","connected")))} validity</p>'
         if t['show_profile']:extras+=f'<p>Profile: {escape(str(row.get("profile","")))}</p>'
-        cards.append(f'<article><header>{escape(t["brand"])} {"• SAMPLE / DEMO" if demo else ""}</header><h2>{escape(t["heading"])}</h2><p>{escape(t["network"])}</p>{fields}{extras}<p class="price">{escape(t["price"])}</p><small>{hint}</small><p>{escape(t["contact"])}</p><footer>{escape(t["footer"])}</footer></article>')
+        cards.append(f'<article><header>{escape(t["brand"])} {"• SAMPLE / DEMO" if demo else ""}</header><h2>{escape(t["heading"])}</h2><p>{escape(t["network"])}</p>{fields}{extras}<p class="price">{escape(str(row.get('price_label',t['price'])))}</p><small>{hint}</small><p>{escape(t["contact"])}</p><footer>{escape(t["footer"])}</footer></article>')
     width={'a4':'210mm','thermal58':'58mm','thermal80':'80mm'}[t['layout']]
     columns=t['columns'] if t['layout']=='a4' else 1
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(t['name'])}</title><style>
