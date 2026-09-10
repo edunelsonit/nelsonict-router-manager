@@ -30,20 +30,20 @@ The CSV includes mode, username, password, allowance, policy, profile and batch.
 
 A printed PIN alone does not make the standard MikroTik login page a one-field page.
 
-1. In Template editor choose the desired layout and branding, then select **Download portal installation ZIP**.
-2. Extract the ZIP on your computer and read `INSTALL.txt`. The package contains branded `login.html`, `flogin.html` and `portal.css`, plus template JSON and instructions. It is an **overlay**, not a full replacement for RouterOS's default hotspot files.
-3. Use WinBox to download a backup of the router's entire currently selected hotspot directory.
-4. Copy that directory on your computer into a **new** folder such as `nelsonict-pin` or `nelsonict-credentials`. Overlay the three generated files. Preserve the original `md5.js`, `alogin.html`, `status.html`, `logout.html`, `redirect.html` and other support files.
-5. Upload the completed new folder through **WinBox → Files**. On devices using persistent flash storage, use an appropriate folder such as `flash/nelsonict-pin`. Do not overwrite/delete the old portal folder. RouterOS file uploads are a manual WinBox step in this release.
-6. Connect the app to the router. Select the hotspot server and actual uploaded directory, then **Check installation**. Review the affected server profile, previous directory, authentication method and all servers sharing that profile.
-7. The check confirms required filenames exist. It does **not** establish that their contents match the downloaded package. Verify that you uploaded the intended files. Existing nonempty HTML-directory overrides are rejected for manual review.
-8. Enter `INSTALL PORTAL` to activate. This changes only the server profile's `html-directory`; it does not change authentication methods, passwords, bandwidth or expiry policies.
-9. Test from a client that is not already logged in. PIN mode requires username=password. Existing users with independent passwords need the two-field portal; switching a shared profile to PIN-only can prevent those users from logging in.
-10. To revert, open **Change history** and use Rollback additions on the portal-install record. For this record type it restores the previous HTML directory. It refuses if the profile was subsequently changed or has an override. You can also restore HTML Directory directly in WinBox. Keep the old files available.
+1. Connect to the router over an enabled API/API-SSL or HTTP/HTTPS REST service.
+2. Choose branding and PIN-only or username/password layout in Template editor. Select the hotspot server and click **Prepare direct installation**.
+3. Review the previous folder, new unique destination and all servers sharing the profile. The app uses `flash/` when a flash directory exists. Required original support files must be present.
+4. Confirm **INSTALL PORTAL**. The app invokes RouterOS `file/copy` to copy the current folder, checks copied file metadata, writes the three generated pages and reads their contents back to verify the upload. Only then does it change the profile's `html-directory`. Authentication methods and existing credentials remain as configured.
+5. Test a new customer login. PIN mode requires username=password; use the two-field portal when tickets have independent passwords.
+6. To restore, open **Change history** and roll back the portal-deploy record. This restores the prior directory when the profile still matches the installation. It retains both folders. A failed copy/upload leaves the prior portal selected; partially created folders remain for inspection and are never blindly retried or deleted.
+
+The optional ZIP is a three-file overlay, not a complete RouterOS portal. It includes manual installation instructions for advanced use; direct installation does not require WinBox upload. The legacy plan/install API endpoints can still activate an already uploaded folder.
+
+Direct installation requires firmware and permissions supporting directory `file/copy`, file creation and content editing. Unsupported commands stop the installer. Generated pages are limited to 60 KB each. Copy verification checks names/type/size and upload verification checks exact generated text, not binary hashes of original support files. RouterOS flash writeback may be delayed; immediate readback does not guarantee survival of an immediate power cut. Hardware validation of these operations, customer login and reboot persistence remains required.
 
 The portal supports RouterOS **HTTP-CHAP** using the router's existing `md5.js` or **HTTPS** authentication. It refuses unencrypted HTTP-PAP fallback. HTTPS submissions remain on HTTPS. The installer requires a pre-existing compatible authentication method and does not provision captive-portal certificates. Login errors use a generic message rather than reflecting arbitrary submitted credentials.
 
-Use a distinct new directory for later portal updates so directory rollback remains meaningful. The demo contains simulated uploaded folders; those files do not exist on a real router until you upload them.
+Use a distinct new directory for later portal updates so directory rollback remains meaningful. The demo simulates directory copying and file uploads; it does not touch a real router.
 
 ## API additions
 
@@ -55,6 +55,8 @@ All routes use the existing owner token and Origin checks:
 | `POST /api/templates/save` | Validate/save `template`; saving id `default` creates a new ID |
 | `POST /api/templates/render` | Return script-free printable HTML for `template`, optionally `vouchers`; without vouchers uses marked samples |
 | `POST /api/templates/export` | Return a base64 ZIP and filename for the portal overlay |
+| `POST /api/portal/prepare` | Prepare direct installation using `server` and `template` |
+| `POST /api/portal/deploy` | Copy, upload, verify and activate a fresh `plan_id` with confirmation `INSTALL PORTAL` |
 | `POST /api/portal/plan` | Inspect `server`, uploaded `directory` and selected `mode` (`pin` or `credentials`) |
 | `POST /api/portal/install` | Activate a fresh `plan_id` with confirmation `INSTALL PORTAL` |
 
@@ -65,3 +67,5 @@ Voucher creation adds `credential_mode` (`pin` or `credentials`), `pin_length`, 
 Automated tests cover escaped templates, credential generation, saved-template persistence, package contents, simulated activation/restore and stale-plan protection. Generated JavaScript is exercised with mock DOM/CHAP callbacks to verify PIN mapping, independent passwords, HTTPS behavior and HTTP-PAP refusal. This does not validate the router's MD5 library or actual captive-portal execution. Real browser rendering, printer layouts and RouterOS 7.24.2 installation/login still require acceptance testing.
 
 Reference: [MikroTik Hotspot customization: servlet pages, CHAP and support files](https://help.mikrotik.com/docs/spaces/ROS/pages/87162881/Hotspot+customisation).
+
+Transport and file operations: [RouterOS API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API), [RouterOS Files](https://help.mikrotik.com/docs/spaces/ROS/pages/2555971/Files).

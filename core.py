@@ -14,7 +14,7 @@ class ValidationError(Exception):
     pass
 
 class Router:
-    def __init__(self, host, username, password, port=443, fingerprint=''):
+    def __init__(self, host, username, password, port=None, fingerprint='', transport='https'):
         ip = ipaddress.ip_address(host)
         if ip.is_loopback or ip.is_multicast or ip.is_unspecified or ip.is_link_local:
             raise ValidationError('Use the router LAN or VPN IP, not a loopback, link-local, or multicast address.')
@@ -22,38 +22,50 @@ class Router:
             raise ValidationError('This release supports IPv4 management addresses.')
         if not username or not password or ':' in username:
             raise ValidationError('Enter a router username and password. Username cannot contain a colon.')
-        self.host, self.port = str(ip), int(port)
+        if transport not in ('https','http','api','api-ssl'):raise ValidationError('Choose HTTPS, HTTP, API or API-SSL.')
+        if transport in ('http','api') and not any(ip in ipaddress.ip_network(n) for n in ('10.0.0.0/8','172.16.0.0/12','192.168.0.0/16')):
+            raise ValidationError('Plain HTTP/API connections are limited to private LAN/VPN IPv4 addresses.')
+        self.transport=transport
+        self.username,self.password=username,password
+        self.host, self.port = str(ip), int({'https':443,'http':80,'api':8728,'api-ssl':8729}[transport] if port in (None,'') else port)
         if not 1 <= self.port <= 65535:
-            raise ValidationError('Invalid HTTPS port.')
+            raise ValidationError('Invalid router service port.')
         self.auth = base64.b64encode(f'{username}:{password}'.encode()).decode()
         self.fingerprint = fingerprint.replace(':', '').replace(' ', '').lower()
         if self.fingerprint and not re.fullmatch(r'[0-9a-f]{64}', self.fingerprint):
             raise ValidationError('Certificate pin must be a SHA-256 fingerprint (64 hex characters).')
 
-    def call(self, path, method='GET', data=None):
-        context = ssl.create_default_context()
+    def tls_context(self):
+        context=ssl.create_default_context()
         if self.fingerprint:
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        connection = http.client.HTTPSConnection(self.host, self.port, context=context, timeout=15)
+            context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
+        return context
+
+    def verify_peer(self,certificate):
+        if self.fingerprint and not secrets.compare_digest(hashlib.sha256(certificate).hexdigest(),self.fingerprint):
+            raise ValidationError('Router certificate does not match the trusted fingerprint. No credentials sent.')
+
+    def call(self, path, method='GET', data=None):
+        if self.transport in ('api','api-ssl'):
+            from api_transport import call, APIError
+            try:return call(self,path,method,data)
+            except APIError as e:raise ValidationError(str(e)) from e
+        connection=(http.client.HTTPSConnection(self.host,self.port,context=self.tls_context(),timeout=15)
+                    if self.transport=='https' else http.client.HTTPConnection(self.host,self.port,timeout=15))
         try:
             connection.connect()
-            if self.fingerprint:
-                actual = hashlib.sha256(connection.sock.getpeercert(binary_form=True)).hexdigest()
-                if not secrets.compare_digest(actual, self.fingerprint):
-                    raise ValidationError('Router certificate does not match the trusted fingerprint. No credentials sent.')
-            connection.request(method, '/rest/' + path, body=None if data is None else json.dumps(data),
+            if self.transport=='https':self.verify_peer(connection.sock.getpeercert(binary_form=True))
+            # Metadata only for broad file lists; content reads are explicitly scoped.
+            endpoint=path+'?.proplist=.id,name,type,size' if path=='file' and method=='GET' else path
+            connection.request(method, '/rest/' + endpoint, body=None if data is None else json.dumps(data),
                                headers={'Authorization': 'Basic ' + self.auth, 'Content-Type': 'application/json'})
             response = connection.getresponse()
             raw = response.read(4 * 1024 * 1024 + 1)
-            if len(raw) > 4 * 1024 * 1024:
-                raise ValidationError('Router response too large.')
+            if len(raw) > 4 * 1024 * 1024:raise ValidationError('Router response too large.')
             if response.status >= 400:
-                # Never reflect router response bodies: they may include secrets.
                 raise ValidationError(f'Router returned HTTP {response.status} for {method} {path}. Check permissions and RouterOS support.')
             return json.loads(raw) if raw else {}
-        finally:
-            connection.close()
+        finally:connection.close()
 
 PATHS = ['system/resource', 'system/identity', 'interface', 'interface/bridge/port',
          'ip/address', 'ip/pool', 'ip/dhcp-client', 'ip/dhcp-server', 'ip/dhcp-server/network',

@@ -22,6 +22,8 @@ TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
+from portal_install import prepare as prepare_portal, deploy as deploy_portal
+
 class DemoRouter:
     def __init__(self):
         self.data = {p:[] for p in __import__('core').PATHS}
@@ -38,10 +40,21 @@ class DemoRouter:
             'file':[{'name':'nelsonict-'+mode+'/'+f} for mode in ('pin','credentials') for f in REQUIRED_FILES],
             'ipv6/settings':{'disable-ipv6':'true'}, 'system/device-mode':{'hotspot':'yes'},
         })
+        self.data['file'] += [{'.id':'*F0','name':'hotspot','type':'directory'}] + [{'.id':f'*F{i+1}','name':'hotspot/'+f,'type':'file','size':'12','contents':'demo support'} for i,f in enumerate(REQUIRED_FILES)]
         self.counter = 100
     def call(self,path,method='GET',data=None):
         from urllib.parse import unquote
         path = unquote(path)
+        if method=='POST' and path=='file/copy':
+            source=next(x['name'] for x in self.data['file'] if x.get('.id')==data['numbers'])
+            for row in list(self.data['file']):
+                if row['name']==source or row['name'].startswith(source+'/'):
+                    self.counter+=1
+                    self.data['file'].append({**row,'.id':f'*D{self.counter}','name':data['name']+row['name'][len(source):]})
+            return {}
+        if method=='POST' and path=='file/print':
+            ident=data['.query'][0].split('=',1)[1]
+            return copy.deepcopy([x for x in self.data['file'] if x.get('.id')==ident])
         if method == 'GET' and path == 'system/ntp/client': return {'status':'synchronized'}
         if method == 'GET' and path == 'system/clock':
             from datetime import datetime, timezone
@@ -50,14 +63,14 @@ class DemoRouter:
         if method == 'GET':
             if path in self.data: return copy.deepcopy(self.data[path])
             menu, item = path.rsplit('/',1)
-            return copy.deepcopy(next(x for x in self.data.get(menu,[]) if x['.id']==item))
+            return copy.deepcopy(next(x for x in self.data.get(menu,[]) if x.get('.id')==item))
         if method == 'PUT':
             self.counter += 1
             result = {'.id':f'*D{self.counter}', **data}
             self.data.setdefault(path,[]).append(result)
             return copy.deepcopy(result)
         menu, item = path.rsplit('/',1)
-        record = next(x for x in self.data[menu] if x['.id']==item)
+        record = next(x for x in self.data[menu] if x.get('.id')==item)
         if method == 'DELETE': self.data[menu].remove(record); return {}
         if method == 'PATCH': record.update(data); return copy.deepcopy(record)
         raise ValidationError('Unsupported demo operation.')
@@ -108,7 +121,7 @@ def public_status():
         row.update(describe_user(x,sessions,clock['now'],clock['boot'],clock['verified']))
         visible.append(row)
     return {'demo':STATE['demo'],'host':STATE['host'],'resource':resource,
-            'identity':identity[0] if isinstance(identity,list) else identity,
+            'identity':identity[0] if isinstance(identity,list) else identity,'transport':getattr(r,'transport','demo'),
             'interfaces':r.call('interface'),
             'profiles':[{k:v for k,v in x.items() if k in ('.id','name','rate-limit','shared-users')} for x in r.call('ip/hotspot/user/profile')],
             'servers':r.call('ip/hotspot'),'users':visible,
@@ -154,17 +167,17 @@ def route(path,data):
     if path=='/api/templates/render':return {'html':print_html(data.get('template'),data.get('vouchers'),bool(data.get('demo',False)))}
     if path=='/api/templates/export':return portal_package(data.get('template'))
     if path=='/api/connect':
-        STATE.update(router=None,plan=None,host=None,identity=None)
-        r=Router(data.get('host',''),data.get('username',''),data.get('password',''),data.get('port',443),data.get('fingerprint',''))
+        STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None)
+        r=Router(data.get('host',''),data.get('username',''),data.get('password',''),data.get('port'),data.get('fingerprint',''),data.get('transport','https'))
         s=snapshot(r)
         ident=s['system/identity']; ident=ident[0] if isinstance(ident,list) else ident
         STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False)
         return public_status()
     if path=='/api/demo':
-        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,last_journal=None,demo_journals={})
+        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={})
         return public_status()
     if path=='/api/disconnect':
-        STATE.update(router=None,plan=None,host=None,identity=None,demo=False,last_journal=None)
+        STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None,demo=False,last_journal=None)
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
@@ -191,6 +204,21 @@ def route(path,data):
         STATE['plan']=None  # Consume before first write; no duplicate click/replay.
         execute(r,plan['operations'],journal)
         return {'ok':True,'journal':journal['id'],'count':len(journal['entries']),'demo':STATE['demo']}
+    if path=='/api/portal/prepare':
+        STATE['upload_plan']=None
+        plan=prepare_portal(r,data.get('server'),data.get('template'))
+        plan.update(id=secrets.token_urlsafe(24),created=time.time(),host=STATE['host'],identity=STATE['identity'],demo=STATE['demo'])
+        STATE['upload_plan']=plan
+        return plan
+    if path=='/api/portal/deploy':
+        plan=STATE.get('upload_plan')
+        if not plan or data.get('plan_id')!=plan['id'] or time.time()-plan['created']>600:raise ValidationError('Prepare a fresh portal installation.')
+        if data.get('confirmation')!='INSTALL PORTAL':raise ValidationError('Confirm INSTALL PORTAL after reviewing affected servers.')
+        if any(plan[k]!=STATE[k] for k in ('host','identity','demo')):raise ValidationError('Router connection changed. Prepare again.')
+        STATE['upload_plan']=None
+        journal=new_journal('portal-deploy')
+        deploy_portal(r,plan,journal)
+        return {'ok':True,'journal':journal['id'],'directory':plan['directory']}
     if path=='/api/portal/plan':
         STATE['portal_plan']=None
         plan=portal_plan(r,data.get('server'),data.get('directory'),data.get('mode'))
@@ -289,15 +317,16 @@ def route(path,data):
             journal['save']=save
         if journal['host']!=STATE['host'] or journal['identity']!=STATE['identity'] or journal['demo']!=STATE['demo']:
             raise ValidationError('This change record belongs to another router or mode.')
-        if journal['kind']=='portal-install':
+        if journal['kind'] in ('portal-install','portal-deploy'):
             from urllib.parse import quote
             for entry in journal['entries']:
+                if journal['kind']=='portal-deploy' and not entry.get('activation'):continue
                 if entry['state']=='rolled-back':continue
-                current=r.call(entry['path']+'/'+quote(entry['id'],safe=''))
+                current=r.call('ip/hotspot/profile/'+quote(entry['id'],safe=''))
                 if isinstance(current,list):current=current[0]
                 if current.get('name')!=entry['values']['name'] or current.get('html-directory')!=entry['after'] or current.get('html-directory-override') not in (None,'','none'):
                     raise ValidationError('Portal changed after installation; inspect in WinBox before restoring.')
-                r.call(entry['path']+'/'+quote(entry['id'],safe=''),'PATCH',{'html-directory':entry['before']})
+                r.call('ip/hotspot/profile/'+quote(entry['id'],safe=''),'PATCH',{'html-directory':entry['before']})
                 entry['state']='rolled-back';journal['save']()
             return {'ok':True,'uncertain':0}
         if journal['kind']=='ticket-action':raise ValidationError('Ticket actions have no automatic rollback. Use the explicit enable/disable controls.')
@@ -343,7 +372,7 @@ class Handler(BaseHTTPRequestHandler):
         except ssl.SSLError:
             self.send(400,{'error':'TLS certificate verification failed. Install a trusted certificate or enter its independently verified SHA-256 pin.'})
         except Exception:
-            self.send(502,{'error':'Router request or local journal write failed. Check connectivity, HTTPS, permissions and disk space. If a write was running, inspect Change history before retrying.','journal':(STATE.get('last_journal') or {}).get('id')})
+            self.send(502,{'error':'Router request or local journal write failed. Check connectivity, selected router service, permissions and disk space. If a write was running, inspect Change history before retrying.','journal':(STATE.get('last_journal') or {}).get('id')})
 
 def main():
     parser=argparse.ArgumentParser(description='Nelsonict Router Manager — local management application')

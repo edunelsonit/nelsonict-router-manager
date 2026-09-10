@@ -49,3 +49,9 @@ The current token gives one trusted owner full access, and all clients share one
 ## v0.3 templates and credentials
 
 See [TEMPLATES.md](TEMPLATES.md) for template routes, portal activation and credential-format fields. Separate usernames/passwords are returned only for newly generated batches; templates contain no ticket secrets.
+
+## LAN connection and direct portal installation (v0.4)
+
+`POST /api/connect` accepts `host`, `username`, `password`, optional `transport` (`api`, `api-ssl`, `http`, `https`), optional `port`, and optional TLS `fingerprint`. Omitted transport retains HTTPS for existing clients; the new UI selects API by default. Omitted port follows the chosen service. Status includes transport. Plain transports are limited to private IPv4 LAN addresses.
+
+`POST /api/portal/prepare` accepts `server` and a validated `template`, returning a ten-minute, connection-bound plan. `POST /api/portal/deploy` accepts `plan_id` and `confirmation: "INSTALL PORTAL"`. Plans are consumed before writing. The result includes `journal` and `directory`. A portal-deploy journal restores only the profile activation; copied/uploaded files are retained. Existing manual portal endpoints remain available.

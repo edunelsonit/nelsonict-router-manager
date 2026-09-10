@@ -21,3 +21,7 @@ Versioned, tested templates for Starlink WAN setup, bridged Grandstream access p
 ## Commercial platform
 
 Operator roles, multiple routers, encrypted credential storage with OS keychain support, tamper-evident audit records, validated payment/revenue workflows, hosted control plane with an outbound authenticated local agent, backups and monitoring. Existing architecture is not advertised as ready for untrusted remote users.
+
+## v0.4 implemented locally; hardware validation pending
+
+LAN API/API-SSL and HTTP/HTTPS REST connections, explicit service and port selection, and direct portal folder copying, page upload, readback verification, activation and directory restore. See ACCEPTANCE.md for the release gate.

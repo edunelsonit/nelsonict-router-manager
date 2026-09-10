@@ -2,7 +2,7 @@
 
 A local MikroTik management application for **Nelsonict Services Limited**: connect a router, inspect its configuration, review a setup plan, apply additions, and create printable hotspot vouchers.
 
-**Version 0.3.0 — pilot, not a production-certified release.** Targets the RouterOS v7 REST interface. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
+**Version 0.4.0 — pilot, not a production-certified release.** Targets RouterOS v7 API and REST services. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
 
 ## Run it
 
@@ -33,29 +33,31 @@ Click **Open demonstration** to explore without touching any router. All demonst
 
 - **Python backend:** cross-platform networking, certificate verification, input validation and operation journaling, with no installation dependency chain.
 - **HTML, CSS and JavaScript:** a responsive browser interface without a build step or external CDNs.
-- **RouterOS HTTPS REST API:** authenticated JSON operations instead of injecting user input into RouterOS scripts.
+- **RouterOS API/API-SSL and HTTP/HTTPS REST:** structured commands with explicit transport selection.
 - **Local execution:** your router's private IP is reachable from your LAN or management VPN. A publicly hosted web page or GitHub Pages cannot replace this backend.
 
 This is a desktop-hosted, single-owner application with a mobile web interface. Owners can access it through optional HTTPS on a trusted LAN or VPN. It is not a native Android/iOS app or multi-tenant SaaS. All authorized owner devices share one active router connection.
 
-## First router connection: WinBox walkthrough
+## First router connection over LAN
 
-An IP alone cannot enable or authorize management. Complete this once through a trusted WinBox session.
+1. Connect the computer to the router's existing management LAN using Ethernet or Wi-Fi. A guest hotspot may require login or an explicitly permitted management path. Keep a backup and independent management access before changing network settings.
+2. Enter the local router IP, username and password. The UI defaults to API on port 8728. Choose the router's enabled service; custom ports are supported.
 
-1. **Keep an independent management path.** Your computer must use the existing management LAN, never the spare port you intend to configure. Arrange local/physical recovery access.
-2. **Save a backup.** In WinBox, open Files → Backup and download the resulting file. Also export the current configuration from Terminal using `/export file=before-nelsonict` and download the `.rsc` file. Protect backups because they may contain sensitive information. This application does not create or restore full backups automatically.
-3. **Prepare a TLS server certificate.** In System → Certificates, import or create a certificate suitable for HTTPS service. Prefer a trusted certificate with the router IP in its subject alternative names. For a self-signed certificate, export only its public certificate using WinBox over the trusted connection.
-4. **Obtain its fingerprint.** On a computer with OpenSSL installed, run:
+| App selection | Router service | Default port | Account service policy |
+|---|---|---|---|
+| API | api | 8728 | api |
+| API-SSL | api-ssl | 8729 | api |
+| HTTP REST | www | 80 | rest-api |
+| HTTPS REST | www-ssl | 443 | rest-api |
 
-   ```sh
-   openssl x509 -in router.crt -noout -fingerprint -sha256
-   ```
+The account also needs read/write permissions. See EXPIRY.md for script installation permissions. The selected service must already be enabled and reachable through the firewall; an IP and password cannot turn on a disabled management service. Initial service configuration can use your existing trusted management tool. The app never changes service exposure or silently falls back to an unencrypted connection.
 
-   Copy the hex fingerprint after `=`. Use the certificate actually assigned to `www-ssl`. Never accept a fingerprint supplied only through an untrusted network connection. The app verifies a provided pin before sending credentials.
-5. **Enable HTTPS management.** In IP → Services, open `www-ssl`, set the certificate and HTTPS port, enable it and restrict Available From to your management computer's `/32` address or a trusted management VPN subnet. Verify the existing firewall allows this management access. Do not expose management to the public internet.
-6. **Create an application account.** In System → Users → Groups, create a dedicated group with `read,write,rest-api`; then create a password-protected user in that group. Your RouterOS policy and device-mode must permit the requested features. Additional broad policies are not added by this app. RouterOS write permission is powerful; restrict the account's allowed source address too.
-7. **Connect in the app.** Enter router IP, HTTPS port, username and password. Add the verified fingerprint only when using the pinning option. Without a pin, normal OS CA and IP/hostname verification is mandatory.
-8. **Inspect the detected version and interfaces.** Build a plan in the Setup wizard. Read all warnings and exact operations before confirming.
+Plain API/HTTP sends credentials without encryption and is restricted to RFC1918 private IPv4 addresses. Use it only on a trusted management LAN. API-SSL/HTTPS verifies the router certificate through the OS trust store, or an independently obtained SHA-256 certificate fingerprint. For a self-signed certificate, export its public certificate through a trusted connection and run `openssl x509 -in router.crt -noout -fingerprint -sha256`. Assign a certificate to the encrypted router service; anonymous-DH API-SSL is unsupported.
+
+3. Click Connect & inspect. The wizard reads the router and prepares operations for review.
+4. For a captive portal, open Template editor, customize the page, choose the hotspot server and select Prepare direct installation. Confirm Upload & activate portal after reviewing shared-server effects. The app performs the folder copy and upload; WinBox file transfer is unnecessary.
+
+The backend computer must be able to reach the router. Optional phone access to the owner interface still requires application HTTPS; this is independent of the router connection service.
 
 The router password is not persisted in configuration, browser storage, or journals. It remains in process memory for the active connection. Disconnect and stop the process when finished. Other users or malware with access to the same OS account remain outside this pilot's security boundary.
 
@@ -71,11 +73,11 @@ The new network is internet-only: forwarding toward RFC1918 and link-local desti
 
 **These are additive LAN scenarios, not factory-reset or full WAN installers.** The wizard never detaches a port from an existing bridge, changes a WAN, upgrades packages, changes global IPv6 settings, or resets the router. It refuses occupied ports and overlapping interface, DHCP-network and address-pool ranges. Existing firewall customizations can still conflict with the generated plan: review the exact operation list. A drop rule's presence is only a preliminary check, not a security audit.
 
-Hotspot setup uses RouterOS default portal assets and `http-chap,cookie`, with local users and RADIUS disabled for the newly created profile. Branded one-field PIN and two-field portals can now be generated and activated through the [template editor workflow](TEMPLATES.md). File upload remains a manual WinBox step; HTTPS captive portal certificate provisioning is future work. For an existing hotspot, inspect its existing login methods and FastTrack exclusions yourself. Profile rate limits can be bypassed by unsuitable FastTrack configuration.
+Hotspot setup uses RouterOS default portal assets and `http-chap,cookie`, with local users and RADIUS disabled for the newly created profile. Branded one-field PIN and two-field portals can now be generated and activated through the [template editor workflow](TEMPLATES.md). The app copies and uploads portal files directly; HTTPS captive portal certificate provisioning is future work. For an existing hotspot, inspect its existing login methods and FastTrack exclusions yourself. Profile rate limits can be bypassed by unsuitable FastTrack configuration.
 
 ## Template editor and customer login pages
 
-Customize branding, colors, ticket text, PIN/username-password layout, A4 columns and thermal widths with a sample preview. Save/import/export templates, generate either credential type, and print actual batches. Export a branded RouterOS portal overlay, upload it through WinBox, then check and activate its directory with a recorded restore path. See [TEMPLATES.md](TEMPLATES.md) for installation and compatibility details.
+Customize branding, colors, ticket text, PIN/username-password layout, A4 columns and thermal widths with a sample preview. Save/import/export templates, generate either credential type, and print actual batches. Install a branded RouterOS portal directly with a recorded restore path, or download an optional overlay ZIP. See [TEMPLATES.md](TEMPLATES.md) for installation and compatibility details.
 
 ## Owner dashboard and mobile access
 
@@ -112,7 +114,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```

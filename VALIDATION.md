@@ -1,14 +1,14 @@
 # Validation record
 
-- 68 Python unit and local HTTP integration tests passed.
+- 85 Python unit and local HTTP integration tests passed.
 - Python compilation checks passed.
 - Frontend JavaScript syntax check passed.
 - HTTP tests exercised demo connect, plan, apply, voucher creation, user disable, rollback, disconnect, and rejection without an access token or Origin header.
 - Browser visual/interaction QA was attempted but could not run because the runtime has no installed Chromium executable. No visual QA pass is claimed.
 - No real RouterOS device was accessible. No RouterOS 7.24.2 certification is claimed.
-- Windows/macOS execution and remote CI have not been run in this session.
+- Windows/macOS execution is unverified. Previous remote CI attempts failed before test steps started; local results are independent of GitHub Actions.
 
-Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates` from the project root. See ACCEPTANCE.md for the hardware release gate.
+Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan` from the project root. See ACCEPTANCE.md for the hardware release gate.
 
 ## v0.2 scope
 
@@ -19,3 +19,9 @@ Mobile transport tests also verified a real local HTTPS request with certificate
 ## v0.3
 
 20 additional tests passed for templates, credential formats, portal packages, installation/restore guards, and generated JavaScript authentication mapping. The latter use a mock DOM and hash callback, not a live RouterOS CHAP exchange. Physical browser/printer/router validation remains outstanding.
+
+## v0.4
+
+17 additional tests cover fragmented binary API frames, UTF-8, reply limits, sanitized traps, modern login ordering, TLS pin rejection before credentials, command/query mapping, private-address constraints and HTTP request construction. They use mocked sockets/connections rather than RouterOS hardware. Installer tests cover simulated copy/upload/readback/activation/restore, persistent-folder selection, occupied destinations, stale source metadata, failed copy, failed readback and profile drift. All 85 tests and Python/JavaScript syntax checks passed locally.
+
+Hardware acceptance remains required for native `file/copy` command arguments and support, file permissions and content editing, API-SSL certificates, real captive login and reboot persistence. No browser visual pass is claimed.

@@ -35,3 +35,10 @@ Status: **not executed on a real router**. Use a spare router or isolated lab wi
 25. Upload a copied portal folder with preserved RouterOS support files. Check the shared-profile warning, compatible login methods, directory activation, first unauthenticated login and restoration.
 26. Test real CHAP with the router's md5.js, HTTPS without protocol downgrade, missing md5.js, failed authentication, expiry-hook invocation and PIN users on two-field pages. Do not migrate separate-password users to a PIN-only portal without a plan.
 27. Interrupt activation and inspect the journal. Verify a stale plan or later profile change blocks unsafe activation/restore.
+
+## v0.4 LAN and direct installation gate
+
+- Test each transport (API, API-SSL, HTTP REST, HTTPS REST), default/custom ports, denied policies, disabled services, blocked guest management access and TLS pin mismatch. Confirm no silent fallback and no credentials sent after certificate rejection.
+- Verify native directory `file/copy` with source `numbers` and destination `name` on the target RouterOS build; verify add/set/print content operations and required account policies. Unsupported commands must stop without activation or automatic retry.
+- Install PIN and username/password templates directly, preserving binary assets and original CHAP support files. Test shared profiles, flash persistence after a clean reboot, full storage, interrupted upload, readback mismatch, occupied targets and concurrent profile changes.
+- Restore the old directory through Change history. Verify partial copies remain for inspection and no existing portal assets are deleted. Test new-client login and actual printer/browser layouts separately.
