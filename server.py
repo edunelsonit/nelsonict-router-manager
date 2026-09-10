@@ -12,6 +12,7 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from expiry import (encode, decode, policy_from_form, describe_user, router_clock, engine_operations, expiry_profile, HOOK_SOURCE, ENGINE_NAME, SCHEDULER_SOURCE, deadline)
 from core import Router, ValidationError, snapshot, digest, build_plan, voucher_operations, execute, rollback
 
 ROOT = Path(__file__).resolve().parent
@@ -31,13 +32,18 @@ class DemoRouter:
             'ip/firewall/filter':[{'.id':'*1','chain':'input','action':'drop','comment':'Example WAN protection'}],
             'ip/hotspot':[{'.id':'*1','name':'hotspot1','interface':'bridge','profile':'default','disabled':'false'}],
             'ip/hotspot/user/profile':[{'.id':'*1','name':'default','shared-users':'1'}],
-            'ip/hotspot/user':[], 'ip/hotspot/active':[], 'ip/hotspot/cookie':[],
+            'ip/hotspot/user':[], 'ip/hotspot/active':[], 'ip/hotspot/cookie':[], 'system/scheduler':[],
             'ipv6/settings':{'disable-ipv6':'true'}, 'system/device-mode':{'hotspot':'yes'},
         })
         self.counter = 100
     def call(self,path,method='GET',data=None):
         from urllib.parse import unquote
         path = unquote(path)
+        if method == 'GET' and path == 'system/ntp/client': return {'status':'synchronized'}
+        if method == 'GET' and path == 'system/clock':
+            from datetime import datetime, timezone
+            now=datetime.now(timezone.utc)
+            return {'date':now.strftime('%Y-%m-%d'),'time':now.strftime('%H:%M:%S'),'gmt-offset':'+00:00'}
         if method == 'GET':
             if path in self.data: return copy.deepcopy(self.data[path])
             menu, item = path.rsplit('/',1)
@@ -84,16 +90,60 @@ def new_journal(kind):
         os.replace(temp,target)
     journal['save']=save
     STATE['last_journal']=journal
+    if journal['demo']:STATE.setdefault('demo_journals',{})[ident]=journal
     return journal
 
 def public_status():
     r=active_router()
     resource=r.call('system/resource'); identity=r.call('system/identity')
-    return {'demo':STATE['demo'],'host':STATE['host'],'resource':resource[0] if isinstance(resource,list) else resource,
+    resource=resource[0] if isinstance(resource,list) else resource
+    clock=router_clock(r,resource)
+    users=r.call('ip/hotspot/user'); sessions=r.call('ip/hotspot/active')
+    visible=[]
+    for x in users:
+        row={k:v for k,v in x.items() if k in ('.id','name','profile','server','uptime','limit-uptime','bytes-in','bytes-out','disabled')}
+        row.update(describe_user(x,sessions,clock['now'],clock['boot'],clock['verified']))
+        visible.append(row)
+    return {'demo':STATE['demo'],'host':STATE['host'],'resource':resource,
             'identity':identity[0] if isinstance(identity,list) else identity,
-            'interfaces':r.call('interface'),'profiles':r.call('ip/hotspot/user/profile'),'servers':r.call('ip/hotspot'),
-            'users':[{k:v for k,v in x.items() if k in ('.id','name','profile','server','uptime','limit-uptime','bytes-in','bytes-out','disabled','comment')} for x in r.call('ip/hotspot/user')],
-            'active':[{k:v for k,v in x.items() if k in ('.id','user','address','uptime','bytes-in','bytes-out')} for x in r.call('ip/hotspot/active')]}
+            'interfaces':r.call('interface'),
+            'profiles':[{k:v for k,v in x.items() if k in ('.id','name','rate-limit','shared-users')} for x in r.call('ip/hotspot/user/profile')],
+            'servers':r.call('ip/hotspot'),'users':visible,
+            'active':[{k:v for k,v in x.items() if k in ('.id','user','address','uptime','bytes-in','bytes-out')} for x in sessions],
+            'clock':clock,'observed_at':time.time(),
+            'counts':{'sessions':len(sessions),'connected_users':len(set(x.get('user') for x in sessions)),
+                      'overdue_active':sum(x['overdue_active'] for x in visible),
+                      'expired':sum(x['expiry_state']=='expired' for x in visible)}}
+
+def ticket_action(r,data):
+    action=data.get('action')
+    if action not in ('disable','enable','disconnect') or data.get('confirmation')!=action.upper():
+        raise ValidationError('Confirm the selected ticket action.')
+    uid=data.get('id','')
+    user=next((u for u in r.call('ip/hotspot/user') if u.get('.id')==uid),None)
+    if not user:raise ValidationError('Local hotspot account no longer exists. Refresh first.')
+    if action=='enable':
+        resource=r.call('system/resource');resource=resource[0] if isinstance(resource,list) else resource
+        clock=router_clock(r,resource)
+        status=describe_user(user,[],clock['now'],clock['boot'],clock['verified'])
+        if status['expiry_state'] in ('expired','clock-unverified','invalid-policy'):
+            raise ValidationError('This ticket is expired or its expiry cannot be verified. Issue a new ticket or repair the policy/time first.')
+    from urllib.parse import quote
+    journal=new_journal('ticket-action')
+    entry={'path':'ip/hotspot/user','id':uid,'label':action+' ticket '+user['name'],'state':'pending','values':{'name':user['name']},'action':action}
+    journal['entries'].append(entry);journal['save']()
+    try:
+        if action in ('disable','enable'):
+            r.call('ip/hotspot/user/'+quote(uid,safe=''),'PATCH',{'disabled':'yes' if action=='disable' else 'no'})
+            entry['state']='account-updated';journal['save']()
+        if action in ('disable','disconnect'):
+            for menu in ('ip/hotspot/active','ip/hotspot/cookie'):
+                for row in r.call(menu):
+                    if row.get('user')==user['name']:r.call(menu+'/'+quote(row['.id'],safe=''),'DELETE')
+        entry['state']='applied';journal['save']()
+    except Exception:
+        entry['state']='partial' if entry['state']=='account-updated' else 'uncertain';journal['save']();raise
+    return {'ok':True,'journal':journal['id'],'action':action}
 
 def route(path,data):
     if path=='/api/connect':
@@ -104,7 +154,7 @@ def route(path,data):
         STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False)
         return public_status()
     if path=='/api/demo':
-        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,last_journal=None)
+        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,last_journal=None,demo_journals={})
         return public_status()
     if path=='/api/disconnect':
         STATE.update(router=None,plan=None,host=None,identity=None,demo=False,last_journal=None)
@@ -134,29 +184,53 @@ def route(path,data):
         STATE['plan']=None  # Consume before first write; no duplicate click/replay.
         execute(r,plan['operations'],journal)
         return {'ok':True,'journal':journal['id'],'count':len(journal['entries']),'demo':STATE['demo']}
+    if path=='/api/expiry/preview':
+        return {'operations':engine_operations(r),'hook':HOOK_SOURCE,'scheduler':SCHEDULER_SOURCE,
+                'notice':'Runs every 30 seconds on the router; requires synchronized NTP. Review and lab-test on your RouterOS version.'}
+    if path=='/api/expiry/install':
+        if data.get('confirmation')!='INSTALL':raise ValidationError('Review the router automation and enter INSTALL.')
+        resource=r.call('system/resource');resource=resource[0] if isinstance(resource,list) else resource
+        if not router_clock(r,resource)['verified']:raise ValidationError('Enable and synchronize router NTP before installing the expiry engine.')
+        operations=engine_operations(r)
+        journal=new_journal('expiry-engine')
+        execute(r,operations,journal)
+        return {'ok':True,'count':len(operations),'journal':journal['id']}
     if path=='/api/vouchers':
         profile=data.get('profile'); server=data.get('server')
-        if profile not in [x['name'] for x in r.call('ip/hotspot/user/profile')]: raise ValidationError('Profile no longer exists.')
+        base=next((x for x in r.call('ip/hotspot/user/profile') if x.get('name')==profile),None)
+        if not base: raise ValidationError('Profile no longer exists.')
         if server not in [x['name'] for x in r.call('ip/hotspot') if x.get('disabled')!='true']: raise ValidationError('Select an enabled hotspot server.')
         if data.get('confirmation')!='CREATE': raise ValidationError('Confirm voucher creation.')
         operations,vouchers=voucher_operations(profile,server,data.get('count',1),data.get('duration','1d'),[x['name'] for x in r.call('ip/hotspot/user')])
+        # Legacy API callers can still request connected-time tickets without installing automation.
+        if 'expiry_mode' in data:
+            if engine_operations(r):raise ValidationError('Install the router expiry engine from Vouchers & users first.')
+            resource=r.call('system/resource');resource=resource[0] if isinstance(resource,list) else resource
+            clock=router_clock(r,resource)
+            if not clock['verified']:raise ValidationError('Router NTP must be synchronized before creating tracked tickets.')
+            policy=policy_from_form(data,clock['now']);policy['batch']=vouchers[0]['batch']
+            profile_op=expiry_profile(base,policy['batch'])
+            for op,voucher in zip(operations,vouchers):
+                op['values']['profile']=profile_op['values']['name']
+                op['values']['comment']=encode(policy)
+                if policy['mode']!='connected':op['values']['limit-uptime']='0s'
+                voucher.update(profile=profile_op['values']['name'],policy=policy['mode'],allowance=data.get('duration','1d') if policy['mode'] in ('elapsed','connected') else policy['mode'])
+            operations.insert(0,profile_op)
         journal=new_journal('vouchers')
         execute(r,operations,journal)
         return {'vouchers':vouchers,'journal':journal['id'],'demo':STATE['demo']}
-    if path=='/api/disable':
-        uid=data.get('id','')
-        user=next((u for u in r.call('ip/hotspot/user') if u.get('.id')==uid),None)
-        if not user or not user.get('comment','').startswith('ns-batch-'):
-            raise ValidationError('Only vouchers created by this application can be disabled here.')
-        if data.get('confirmation')!='DISABLE': raise ValidationError('Confirm disabling this voucher.')
-        from urllib.parse import quote
-        r.call('ip/hotspot/user/'+quote(uid,safe=''),'PATCH',{'disabled':'yes'})
-        # Retain user/accounting row while removing login sessions and cookies.
-        for menu in ('ip/hotspot/active','ip/hotspot/cookie'):
-            for row in r.call(menu):
-                if row.get('user')==user['name']:
-                    r.call(menu+'/'+quote(row['.id'],safe=''),'DELETE')
-        return {'ok':True}
+    if path=='/api/disable':return ticket_action(r,{**data,'action':'disable'})
+    if path=='/api/ticket/action':return ticket_action(r,data)
+    if path=='/api/demo/activity':
+        if not STATE['demo']:raise ValidationError('Sample activity is available only in demonstration mode.')
+        now=int(time.time())
+        for name,first,due,active in [('9000000001',now-7200,now+86400,True),('9000000002',now-90000,now-3600,True),('9000000003',0,0,False)]:
+            existing=next((u for u in r.call('ip/hotspot/user') if u['name']==name),None)
+            if existing:continue
+            policy={'mode':'elapsed','duration':86400,'offset':60,'cutoff':86340,'fixed':0,'fallback':36600,'first':first,'due':due,'batch':'de000001'}
+            r.call('ip/hotspot/user','PUT',{'name':name,'profile':'default','server':'hotspot1','comment':encode(policy),'uptime':'1h' if first else '0s','disabled':'no'})
+            if active:r.call('ip/hotspot/active','PUT',{'user':name,'address':'10.50.0.'+name[-1],'uptime':'15m'})
+        return public_status()
     if path=='/api/history':
         records=[]
         if DATA.exists():
@@ -164,14 +238,14 @@ def route(path,data):
                 record=json.loads(f.read_text())
                 if record['host']==STATE['host']: records.append(record)
         if STATE['demo'] and STATE.get('last_journal'):
-            records=[{k:v for k,v in STATE['last_journal'].items() if k!='save'}]
+            records=[{k:v for k,v in row.items() if k!='save'} for row in reversed(list(STATE.get('demo_journals',{}).values()))]
         return {'records':records}
     if path=='/api/rollback':
         if data.get('confirmation')!='ROLLBACK': raise ValidationError('Enter ROLLBACK to remove the recorded additions.')
         ident=data.get('id','')
         import re
         if not re.fullmatch(r'[0-9]+-[0-9a-f]{8}',ident): raise ValidationError('Invalid change record.')
-        journal=STATE.get('last_journal')
+        journal=STATE.get('demo_journals',{}).get(ident) if STATE['demo'] else STATE.get('last_journal')
         if not journal or journal['id']!=ident:
             f=DATA/(ident+'.json')
             if not f.exists(): raise ValidationError('Change record not found.')
@@ -186,6 +260,9 @@ def route(path,data):
             journal['save']=save
         if journal['host']!=STATE['host'] or journal['identity']!=STATE['identity'] or journal['demo']!=STATE['demo']:
             raise ValidationError('This change record belongs to another router or mode.')
+        if journal['kind']=='ticket-action':raise ValidationError('Ticket actions have no automatic rollback. Use the explicit enable/disable controls.')
+        if journal['kind']=='expiry-engine' and any(str(x.get('comment','')).startswith('ns2,') for x in r.call('ip/hotspot/user')):
+            raise ValidationError('Managed tickets still depend on the expiry engine. Do not remove it while those tickets exist.')
         rollback(r,journal['entries'],journal['save'])
         return {'ok':True,'uncertain':sum(x['state']=='uncertain' for x in journal['entries'])}
     raise ValidationError('Unknown operation.')
@@ -203,15 +280,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.end_headers(); self.wfile.write(raw)
     def valid_host(self):
-        return self.headers.get('Host')==f'127.0.0.1:{self.server.server_port}'
+        return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
-        if not self.valid_host(): return self.send(403,{'error':'Use the 127.0.0.1 launch address.'})
+        if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
         name={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
         kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
-        if not self.valid_host() or self.headers.get('Origin')!=f'http://127.0.0.1:{self.server.server_port}' or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):
+        if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):
             return self.send(403,{'error':'Open the private launch URL printed by the application.'})
         try:
             if self.headers.get('Content-Type')!='application/json': raise ValidationError('JSON required.')
@@ -232,11 +309,28 @@ def main():
     parser=argparse.ArgumentParser(description='Nelsonict Router Manager — local management application')
     parser.add_argument('--port',type=int,default=8765)
     parser.add_argument('--no-browser',action='store_true')
+    parser.add_argument('--listen',default='127.0.0.1',help='127.0.0.1 or a private LAN/VPN IPv4 address')
+    parser.add_argument('--tls-cert',help='TLS server certificate PEM, required for phone access')
+    parser.add_argument('--tls-key',help='TLS private key PEM, required for phone access')
     args=parser.parse_args()
-    server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
+    import ipaddress
+    ip=ipaddress.ip_address(args.listen)
+    private=any(ip.version==4 and ip in ipaddress.ip_network(n) for n in ('10.0.0.0/8','172.16.0.0/12','192.168.0.0/16'))
+    if args.listen!='127.0.0.1' and not private:parser.error('Bind to an explicit private LAN/VPN IPv4 address, not 0.0.0.0 or a public address.')
+    if args.listen!='127.0.0.1' and not (args.tls_cert and args.tls_key):parser.error('Phone access requires --tls-cert and --tls-key. HTTP is local-only.')
+    if bool(args.tls_cert)!=bool(args.tls_key):parser.error('Provide both TLS certificate and key.')
+    server=ThreadingHTTPServer((args.listen,args.port),Handler)
+    scheme='http'
+    if args.tls_cert:
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version=ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(args.tls_cert,args.tls_key)
+        server.socket=context.wrap_socket(server.socket,server_side=True)
+        scheme='https'
+    server.app_origin=f'{scheme}://{args.listen}:{server.server_port}'
     server.daemon_threads=True
-    url=f'http://127.0.0.1:{server.server_port}/#token={TOKEN}'
-    print('Nelsonict Router Manager 0.1.0 — local pilot build\nKeep this terminal open. Press Ctrl+C to stop.\nPrivate launch URL:\n'+url,flush=True)
+    url=f'{server.app_origin}/#token={TOKEN}'
+    print('Nelsonict Router Manager 0.2.0 — local pilot build\nKeep this terminal open. Press Ctrl+C to stop.\nPrivate launch URL:\n'+url,flush=True)
     if not args.no_browser: webbrowser.open(url)
     try: server.serve_forever()
     except KeyboardInterrupt: pass

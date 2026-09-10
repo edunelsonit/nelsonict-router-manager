@@ -2,7 +2,7 @@
 
 A local MikroTik management application for **Nelsonict Services Limited**: connect a router, inspect its configuration, review a setup plan, apply additions, and create printable hotspot vouchers.
 
-**Version 0.1.0 — pilot, not a production-certified release.** Targets the RouterOS v7 REST interface. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
+**Version 0.2.0 — pilot, not a production-certified release.** Targets the RouterOS v7 REST interface. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
 
 ## Run it
 
@@ -25,7 +25,7 @@ python3 server.py
 
 If Python is unavailable, install Python 3.11+ using your platform's normal installer. `sh start-unix.sh` is also provided.
 
-The app listens at **127.0.0.1:8765 only**. Open the private launch URL printed in the terminal if the browser does not open. Its fragment contains a per-process access token. Do not share it. Stop the app with Ctrl+C; stop/restart it to invalidate the token. Use `python3 server.py --port 8766` if the default port is occupied.
+By default the app listens at **127.0.0.1:8765 only**. Optional HTTPS LAN/VPN mode supports phone browsers; see [MOBILE.md](MOBILE.md). Open the private launch URL printed in the terminal if the browser does not open. Its fragment contains a per-process access token. Do not share it. Stop the app with Ctrl+C; stop/restart it to invalidate the token. Use `python3 server.py --port 8766` if the default port is occupied.
 
 Click **Open demonstration** to explore without touching any router. All demonstration records are simulated and disappear when you stop or reset that mode.
 
@@ -36,7 +36,7 @@ Click **Open demonstration** to explore without touching any router. All demonst
 - **RouterOS HTTPS REST API:** authenticated JSON operations instead of injecting user input into RouterOS scripts.
 - **Local execution:** your router's private IP is reachable from your LAN or management VPN. A publicly hosted web page or GitHub Pages cannot replace this backend.
 
-This is a desktop-hosted, single-operator application. It does not yet run as a phone/tablet application, a shared LAN server, or a multi-tenant SaaS. The frontend layout supports narrow windows, but the backend intentionally remains loopback-only.
+This is a desktop-hosted, single-owner application with a mobile web interface. Owners can access it through optional HTTPS on a trusted LAN or VPN. It is not a native Android/iOS app or multi-tenant SaaS. All authorized owner devices share one active router connection.
 
 ## First router connection: WinBox walkthrough
 
@@ -73,25 +73,24 @@ The new network is internet-only: forwarding toward RFC1918 and link-local desti
 
 Hotspot setup uses RouterOS default portal assets and `http-chap,cookie`, with local users and RADIUS disabled for the newly created profile. Branded one-field login, HTTPS captive portal certificate provisioning and file uploads are future work. For an existing hotspot, inspect its existing login methods and FastTrack exclusions yourself. Profile rate limits can be bypassed by unsuitable FastTrack configuration.
 
-## Vouchers
+## Owner dashboard and mobile access
 
-1. Apply an Existing hotspot plan or choose an existing working profile.
-2. Open Vouchers & users, select the hotspot server, user profile, allowance and count (1–100).
-3. Confirm creation. Each account receives a random 10-digit PIN as both username and password, avoiding existing usernames.
-4. Print the batch or export CSV. On the standard RouterOS login page, enter the PIN in **both fields**.
-5. Refresh accounts to inspect online/offline status and consumed allowance.
-6. Disable an app-created voucher when necessary. Its user/accounting record is kept, while matching active sessions and login cookies are removed. If cleanup fails after disabling, refresh and inspect the router; the app does not undo the disable.
+See connected users and sessions, first login for tracked tickets, expiry dates, and **expired but still connected** alerts. Search/filter accounts and disable, disconnect or re-enable valid tickets. The view refreshes every 15 seconds while visible and marks failed polls as stale. Older accounts without activation metadata show unknown first login.
 
-| Display option | RouterOS `limit-uptime` | Meaning |
-|---|---|---|
-| 1 day | 1d | 24 hours total connected time |
-| 3 days | 3d | 72 hours total connected time |
-| 1 week | 7d | 168 hours total connected time |
-| 28 days | 28d | 672 hours total connected time |
+The mobile web dashboard uses the same backend. See [MOBILE.md](MOBILE.md) for HTTPS LAN/VPN startup, certificate and token handling. See [API.md](API.md) for the future mobile-client contract.
 
-**This is not elapsed calendar validity.** It does not expire a ticket at midnight, after a number of calendar days, or 10 minutes after next-day router startup. Those policies require a persistent activation/expiry engine with clock synchronization and power-cycle tests; they are explicitly not implemented in this pilot. RouterOS enforces the connected-time allowance even while this management app is closed.
+## Vouchers and configurable expiry
 
-No MAC address is bound to a voucher, and newly generated profiles disable adding MAC cookies. A randomized MAC can still require re-login and may encounter an existing simultaneous session. This does not guarantee seamless roaming or unlimited simultaneous devices.
+1. Open Vouchers & users and review/install the router expiry checker with NTP synchronized.
+2. Select an existing plain user profile and hotspot server.
+3. Choose **elapsed**, **business-day closing**, **next-day startup**, **connected-time**, or **fixed date/time** expiry. Elapsed/connected modes support 1d, 3d, 7d and 28d. Daily policies have location and closing/fallback controls.
+4. Confirm creation of 1–100 random 10-digit PINs. Each batch receives a dedicated profile with the first-login hook; existing custom hooks are not overwritten.
+5. Print or export CSV. On the standard RouterOS page, enter the PIN in both username and password fields.
+6. Inspect the owner dashboard. Expiry disables accounts and removes active sessions/cookies while keeping account records. Owner controls work on any local hotspot account, including older tickets.
+
+The scheduler and activation record live on the router so enforcement does not depend on the management app staying open. **Native scripts still require real-router acceptance testing.** The checker runs every 30 seconds; this is not a second-exact cutoff guarantee. Location scheduling uses an explicit fixed UTC offset (Nigeria +60 minutes), without automatic daylight-saving changes. See [EXPIRY.md](EXPIRY.md) for exact policies and clock/power-loss behavior.
+
+Legacy API callers that omit `expiry_mode` retain connected-time-only behavior. Historical first-login timestamps cannot be recovered for older accounts. No automatic migration guesses those dates. Do not manually edit managed `ns2,` comments.
 
 ## Plan, apply and recovery
 
@@ -109,8 +108,8 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http
-python3 -m py_compile core.py server.py
+python3 -m unittest -v test_core test_http test_expiry test_mobile
+python3 -m py_compile core.py server.py expiry.py
 node --check web/app.js
 ```
 

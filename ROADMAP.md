@@ -8,9 +8,11 @@ Local single-router connection, HTTPS with CA validation or explicit certificate
 
 Run ACCEPTANCE.md on hAP ax2 and a second RouterOS architecture at the requested version. Resolve device-mode, hotspot portal file provisioning, firewall ordering and firmware-specific response differences. Add version/capability fixtures from sanitized real responses. Package signed Windows/macOS launchers once verified.
 
-## Ticket-expiry engine
+## Implemented in v0.2; hardware acceptance pending
 
-Implement 1d/3d/7d/28d elapsed validity from first login and a separate business-day rule: eligible prior-day tickets expire 10 minutes after the next day's router boot, only after a trusted clock is available. Persist activation and expiry across power loss, preserve account records, revoke sessions/cookies and distinguish a same-day reboot from next-day opening. Test delayed NTP, power failure during state write, multiple reboots, no reboot, clock moving backward, unused tickets and random MAC changes. Never approximate these policies with limit-uptime.
+Five per-batch expiry policies, router login hooks and scheduler, persistent activation/deadlines, owner dashboard with expired-active alerts, any-local-ticket controls, and optional HTTPS mobile web access. Validate RouterOS execution, timing, permissions and power-cycle persistence against EXPIRY.md and ACCEPTANCE.md before calling the release production-ready.
+
+Native mobile packaging, independently revocable device tokens, app-store delivery, push notifications and a hosted outbound agent remain future work.
 
 ## Broader setup scenarios
 
