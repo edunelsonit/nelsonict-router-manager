@@ -143,3 +143,5 @@ Use Vouchers & users → Saved vouchers to preview and print by batch or profile
 ## Account table filters and sorting
 
 In Hotspot accounts, search usernames, profiles or status; combine profile and Online/Offline/Disabled filters. Click User, Profile, Used, Allowance or Status headings to toggle ascending/descending order. Durations sort numerically and unlimited allowance sorts above finite limits. The displayed count reflects all active filters. Refresh retains filters and sorting; Reset filters & sort restores all accounts ordered by username.
+
+The owner dashboard presents tickets in a compact table with a bounded scroll area, sticky column headings and action buttons pinned at the right edge. Search/status filters and automatic refresh remain available. Expired-but-connected tickets are highlighted.
