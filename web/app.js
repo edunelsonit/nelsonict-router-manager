@@ -43,8 +43,10 @@ function renderStatus(data){
  options('#profile-select',data.profiles.map(x=>x.name));
  options('#server-select',data.servers.filter(x=>x.disabled!=='true').map(x=>x.name));
  options('#portal-server',data.servers.map(x=>x.name));
- const active=new Set(data.active.map(x=>x.user));
- $('#users-body').innerHTML=data.users.length?data.users.map(u=>`<tr><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.profile)}</td><td>${escapeHTML(u.uptime||'0s')} / ${escapeHTML(u['limit-uptime']||'unlimited')}</td><td>${['true','yes'].includes(u.disabled)?'Disabled':active.has(u.name)?'Online':'Offline'}</td><td>${!['true','yes'].includes(u.disabled)?`<button class="secondary" data-disable="${escapeHTML(u['.id'])}">Disable</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No hotspot accounts yet. Generate your first voucher batch above.</td></tr>';
+ const previous=$('#account-profile').value;
+ $('#account-profile').replaceChildren(new Option('All profiles',''),...Array.from(new Set(data.users.map(u=>u.profile||''))).filter(Boolean).sort().map(p=>new Option(p,p)));
+ if(Array.from($('#account-profile').options).some(o=>o.value===previous))$('#account-profile').value=previous;
+ renderAccounts();
  renderOwner();
 }
 $('#connection-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const data=Object.fromEntries(new FormData(e.target));feedback('Connecting and reading the router configuration…');router=null;plan=null;$('#plan').hidden=true;$('#batch-panel').hidden=true;batch=[];$('#disconnect').hidden=true;$('#mode-banner').hidden=true;$('#connection-status').textContent='Not connected';try{renderStatus(await api('connect',data));}finally{e.target.elements.password.value='';}feedback('Connected. Open the owner dashboard or choose a setup scenario.');await loadProfilePrices();view('dashboard');});});
@@ -122,3 +124,17 @@ async function loadProfilePrices(){const result=await api('profiles/prices');pri
 $('#price-profile').addEventListener('change',fillProfilePrice);
 $('#refresh-prices').addEventListener('click',()=>run(loadProfilePrices));
 $('#profile-price-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const profile=pricedProfiles.find(p=>p.id===$('#price-profile').value);if(!profile)throw new Error('Refresh and select a user profile first.');await api('profiles/price',{id:profile.id,name:profile.name,amount:$('#profile-amount').value,currency:$('#profile-currency').value});await loadProfilePrices();feedback('Profile price saved. It applies to newly generated tickets; existing batches keep their original price.');});});
+
+let accountSort={key:'name',direction:1};
+function renderAccounts(){
+ if(!router)return;
+ const active=new Set(router.active.map(x=>x.user));
+ const rows=accountTableUtils.select(router.users,active,{query:$('#account-search').value,profile:$('#account-profile').value,status:$('#account-status').value,...accountSort});
+ $('#account-count').textContent=`Showing ${rows.length} of ${router.users.length} accounts`;
+ $('#users-body').innerHTML=rows.length?rows.map(u=>{const disabled=['true','yes'].includes(u.disabled);return `<tr><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.profile)}</td><td>${escapeHTML(u.uptime||'0s')}</td><td>${escapeHTML(accountTableUtils.duration(u['limit-uptime'])?u['limit-uptime']:'unlimited')}</td><td>${disabled?'Disabled':active.has(u.name)?'Online':'Offline'}</td><td>${disabled?'—':`<button class="secondary" data-disable="${escapeHTML(u['.id'])}" ${busy?'disabled':''}>Disable</button>`}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">'+(router.users.length?'No accounts match these filters. Reset filters to see all accounts.':'No hotspot accounts yet. Generate your first voucher batch above.')+'</td></tr>';
+ document.querySelectorAll('[data-account-sort]').forEach(button=>{const selected=button.dataset.accountSort===accountSort.key;button.parentElement.setAttribute('aria-sort',selected?(accountSort.direction===1?'ascending':'descending'):'none');button.querySelector('span').textContent=selected?(accountSort.direction===1?'↑':'↓'):'↕';});
+}
+$('#account-search').addEventListener('input',renderAccounts);
+for(const id of ['#account-profile','#account-status'])$(id).addEventListener('change',renderAccounts);
+document.querySelectorAll('[data-account-sort]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.accountSort;accountSort={key,direction:accountSort.key===key?-accountSort.direction:1};renderAccounts();}));
+$('#account-reset').addEventListener('click',()=>{$('#account-search').value='';$('#account-profile').value='';$('#account-status').value='';accountSort={key:'name',direction:1};renderAccounts();});

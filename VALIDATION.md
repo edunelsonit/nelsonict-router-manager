@@ -33,3 +33,7 @@ Eight added tests cover decimal validation, zero/removal, router-scoped persiste
 ## Voucher history
 
 Eight additional tests validate batch/profile selection, credential retention, pagination, partial writes, archive failures before router mutation, persistent router isolation, legacy recovery without guessed credentials/prices and demo reset. All 101 local tests passed. Browser/printer and real-router recovery acceptance remain outstanding.
+
+## Account table controls
+
+Local JavaScript checks passed for combined filters, case-insensitive search, natural username sorting, duration and unlimited-allowance sorting, empty results and source-data preservation. Frontend syntax checks and all 101 Python tests passed. Browser visual/keyboard acceptance is still pending.

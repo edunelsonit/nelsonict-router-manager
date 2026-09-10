@@ -139,3 +139,7 @@ The linked legacy documentation warns that it is frozen; MikroTik directs reader
 ## Saved voucher reprinting
 
 Use Vouchers & users → Saved vouchers to preview and print by batch or profile, 100 tickets per page. New batch credentials and prices persist in private local `data/vouchers` files; protect and back up this directory. Recover older router batches when passwords and Nelsonict batch markers are available. See TEMPLATES.md for recovery limits.
+
+## Account table filters and sorting
+
+In Hotspot accounts, search usernames, profiles or status; combine profile and Online/Offline/Disabled filters. Click User, Profile, Used, Allowance or Status headings to toggle ascending/descending order. Durations sort numerically and unlimited allowance sorts above finite limits. The displayed count reflects all active filters. Refresh retains filters and sorting; Reset filters & sort restores all accounts ordered by username.

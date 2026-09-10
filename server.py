@@ -419,9 +419,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
         if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
-        name={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
+        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
-        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
+        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
         if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):
