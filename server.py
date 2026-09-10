@@ -12,6 +12,7 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from templates import TemplateStore, validate_template, print_html, portal_package, portal_plan, REQUIRED_FILES
 from expiry import (encode, decode, policy_from_form, describe_user, router_clock, engine_operations, expiry_profile, HOOK_SOURCE, ENGINE_NAME, SCHEDULER_SOURCE, deadline)
 from core import Router, ValidationError, snapshot, digest, build_plan, voucher_operations, execute, rollback
 
@@ -33,6 +34,8 @@ class DemoRouter:
             'ip/hotspot':[{'.id':'*1','name':'hotspot1','interface':'bridge','profile':'default','disabled':'false'}],
             'ip/hotspot/user/profile':[{'.id':'*1','name':'default','shared-users':'1'}],
             'ip/hotspot/user':[], 'ip/hotspot/active':[], 'ip/hotspot/cookie':[], 'system/scheduler':[],
+            'ip/hotspot/profile':[{'.id':'*P1','name':'default','html-directory':'hotspot','login-by':'http-chap,cookie'}],
+            'file':[{'name':'nelsonict-'+mode+'/'+f} for mode in ('pin','credentials') for f in REQUIRED_FILES],
             'ipv6/settings':{'disable-ipv6':'true'}, 'system/device-mode':{'hotspot':'yes'},
         })
         self.counter = 100
@@ -146,6 +149,10 @@ def ticket_action(r,data):
     return {'ok':True,'journal':journal['id'],'action':action}
 
 def route(path,data):
+    if path=='/api/templates/list':return {'templates':TemplateStore(DATA/'templates').list()}
+    if path=='/api/templates/save':return {'template':TemplateStore(DATA/'templates').save(data.get('template'))}
+    if path=='/api/templates/render':return {'html':print_html(data.get('template'),data.get('vouchers'),bool(data.get('demo',False)))}
+    if path=='/api/templates/export':return portal_package(data.get('template'))
     if path=='/api/connect':
         STATE.update(router=None,plan=None,host=None,identity=None)
         r=Router(data.get('host',''),data.get('username',''),data.get('password',''),data.get('port',443),data.get('fingerprint',''))
@@ -184,6 +191,28 @@ def route(path,data):
         STATE['plan']=None  # Consume before first write; no duplicate click/replay.
         execute(r,plan['operations'],journal)
         return {'ok':True,'journal':journal['id'],'count':len(journal['entries']),'demo':STATE['demo']}
+    if path=='/api/portal/plan':
+        STATE['portal_plan']=None
+        plan=portal_plan(r,data.get('server'),data.get('directory'),data.get('mode'))
+        plan.update(id=secrets.token_urlsafe(24),created=time.time(),host=STATE['host'],identity=STATE['identity'],demo=STATE['demo'])
+        STATE['portal_plan']=plan
+        return plan
+    if path=='/api/portal/install':
+        plan=STATE.get('portal_plan')
+        if not plan or data.get('plan_id')!=plan['id'] or time.time()-plan['created']>600:raise ValidationError('Portal plan expired. Check the installation again.')
+        if data.get('confirmation')!='INSTALL PORTAL':raise ValidationError('Confirm INSTALL PORTAL after reviewing affected servers.')
+        if plan['host']!=STATE['host'] or plan['identity']!=STATE['identity'] or plan['demo']!=STATE['demo']:raise ValidationError('Router connection changed. Check the installation again.')
+        fresh=portal_plan(r,plan['server'],plan['directory'],plan['mode'])
+        if any(fresh[k]!=plan[k] for k in fresh):raise ValidationError('Router portal configuration changed. Check the installation again.')
+        from urllib.parse import quote
+        journal=new_journal('portal-install')
+        entry={'path':'ip/hotspot/profile','id':plan['profile_id'],'label':'Activate '+plan['directory'],'state':'pending','values':{'name':plan['profile_name']},'before':plan['before'],'after':plan['directory']}
+        journal['entries'].append(entry);journal['save']();STATE['portal_plan']=None
+        try:
+            r.call('ip/hotspot/profile/'+quote(plan['profile_id'],safe=''),'PATCH',{'html-directory':plan['directory']})
+            entry['state']='applied';journal['save']()
+        except Exception:entry['state']='uncertain';journal['save']();raise
+        return {'ok':True,'journal':journal['id']}
     if path=='/api/expiry/preview':
         return {'operations':engine_operations(r),'hook':HOOK_SOURCE,'scheduler':SCHEDULER_SOURCE,
                 'notice':'Runs every 30 seconds on the router; requires synchronized NTP. Review and lab-test on your RouterOS version.'}
@@ -201,7 +230,7 @@ def route(path,data):
         if not base: raise ValidationError('Profile no longer exists.')
         if server not in [x['name'] for x in r.call('ip/hotspot') if x.get('disabled')!='true']: raise ValidationError('Select an enabled hotspot server.')
         if data.get('confirmation')!='CREATE': raise ValidationError('Confirm voucher creation.')
-        operations,vouchers=voucher_operations(profile,server,data.get('count',1),data.get('duration','1d'),[x['name'] for x in r.call('ip/hotspot/user')])
+        operations,vouchers=voucher_operations(profile,server,data.get('count',1),data.get('duration','1d'),[x['name'] for x in r.call('ip/hotspot/user')],data)
         # Legacy API callers can still request connected-time tickets without installing automation.
         if 'expiry_mode' in data:
             if engine_operations(r):raise ValidationError('Install the router expiry engine from Vouchers & users first.')
@@ -260,6 +289,17 @@ def route(path,data):
             journal['save']=save
         if journal['host']!=STATE['host'] or journal['identity']!=STATE['identity'] or journal['demo']!=STATE['demo']:
             raise ValidationError('This change record belongs to another router or mode.')
+        if journal['kind']=='portal-install':
+            from urllib.parse import quote
+            for entry in journal['entries']:
+                if entry['state']=='rolled-back':continue
+                current=r.call(entry['path']+'/'+quote(entry['id'],safe=''))
+                if isinstance(current,list):current=current[0]
+                if current.get('name')!=entry['values']['name'] or current.get('html-directory')!=entry['after'] or current.get('html-directory-override') not in (None,'','none'):
+                    raise ValidationError('Portal changed after installation; inspect in WinBox before restoring.')
+                r.call(entry['path']+'/'+quote(entry['id'],safe=''),'PATCH',{'html-directory':entry['before']})
+                entry['state']='rolled-back';journal['save']()
+            return {'ok':True,'uncertain':0}
         if journal['kind']=='ticket-action':raise ValidationError('Ticket actions have no automatic rollback. Use the explicit enable/disable controls.')
         if journal['kind']=='expiry-engine' and any(str(x.get('comment','')).startswith('ns2,') for x in r.call('ip/hotspot/user')):
             raise ValidationError('Managed tickets still depend on the expiry engine. Do not remove it while those tickets exist.')
@@ -277,15 +317,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
-        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.end_headers(); self.wfile.write(raw)
     def valid_host(self):
         return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
         if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
-        name={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}.get(urlsplit(self.path).path)
+        name={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
-        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
+        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
         if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):
@@ -293,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.headers.get('Content-Type')!='application/json': raise ValidationError('JSON required.')
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<32768: raise ValidationError('Request size invalid.')
+            if not 0<length<131072: raise ValidationError('Request size invalid.')
             data=json.loads(self.rfile.read(length))
             if not isinstance(data,dict): raise ValidationError('JSON object required.')
             with LOCK: result=route(self.path,data)
@@ -330,7 +370,7 @@ def main():
     server.app_origin=f'{scheme}://{args.listen}:{server.server_port}'
     server.daemon_threads=True
     url=f'{server.app_origin}/#token={TOKEN}'
-    print('Nelsonict Router Manager 0.2.0 — local pilot build\nKeep this terminal open. Press Ctrl+C to stop.\nPrivate launch URL:\n'+url,flush=True)
+    print('Nelsonict Router Manager 0.3.0 — local pilot build\nKeep this terminal open. Press Ctrl+C to stop.\nPrivate launch URL:\n'+url,flush=True)
     if not args.no_browser: webbrowser.open(url)
     try: server.serve_forever()
     except KeyboardInterrupt: pass

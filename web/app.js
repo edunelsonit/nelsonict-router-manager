@@ -4,7 +4,7 @@ const token = new URLSearchParams(location.hash.slice(1)).get('token') || sessio
 if(token) sessionStorage.setItem('ns-launch',token);
 history.replaceState(null,'',location.pathname);
 let router = null, plan = null, batch = [], busy = false, currentView='connect';
-const titles = {connect:'Connect your router',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
+const titles = {connect:'Connect your router',templates:'Voucher template editor',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function feedback(message,error=false){const el=$('#feedback');el.textContent=message;el.classList.toggle('error',error);el.hidden=false;}
 async function api(path,data={}){
@@ -26,6 +26,7 @@ function view(name){
  $('#view-title').textContent=titles[name];
  if(name==='history'&&router) run(loadHistory);
  if(name==='dashboard'&&router)renderOwner();
+ if(name==='templates')run(()=>window.loadTemplates());
 }
 document.querySelectorAll('[data-view]').forEach(x=>x.addEventListener('click',()=>view(x.dataset.view)));
 function options(selector,values){const current=$(selector).value;$(selector).replaceChildren(...values.map(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;return o;}));if(values.includes(current))$(selector).value=current;}
@@ -40,6 +41,7 @@ function renderStatus(data){
  options('#wan-select',data.interfaces.map(x=>x.name));
  options('#profile-select',data.profiles.map(x=>x.name));
  options('#server-select',data.servers.filter(x=>x.disabled!=='true').map(x=>x.name));
+ options('#portal-server',data.servers.map(x=>x.name));
  const active=new Set(data.active.map(x=>x.user));
  $('#users-body').innerHTML=data.users.length?data.users.map(u=>`<tr><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.profile)}</td><td>${escapeHTML(u.uptime||'0s')} / ${escapeHTML(u['limit-uptime']||'unlimited')}</td><td>${['true','yes'].includes(u.disabled)?'Disabled':active.has(u.name)?'Online':'Offline'}</td><td>${!['true','yes'].includes(u.disabled)?`<button class="secondary" data-disable="${escapeHTML(u['.id'])}">Disable</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No hotspot accounts yet. Generate your first voucher batch above.</td></tr>';
  renderOwner();
@@ -65,11 +67,11 @@ $('#voucher-form').addEventListener('submit',e=>{e.preventDefault();run(async()=
  const data=Object.fromEntries(new FormData(e.target));data.confirmation='CREATE';
  feedback('Creating vouchers. Do not retry if the connection is interrupted; inspect Change history first.');
  const result=await api('vouchers',data);batch=result.vouchers;
- $('#voucher-cards').innerHTML=batch.map(v=>`<div class="ticket"><small>NELSONICT SERVICES LIMITED${result.demo?' • DEMO':''}</small><strong>${escapeHTML(v.pin)}</strong><span>${escapeHTML(v.allowance)} • ${escapeHTML(v.policy||'connected')} policy</span><small>Username & password: use this PIN</small><small>Profile: ${escapeHTML(v.profile)}</small></div>`).join('');
+ await window.renderVoucherBatch();
  $('#batch-panel').hidden=false;e.target.elements.confirm.checked=false;renderStatus(await api('status'));feedback(`Created ${batch.length} ${result.demo?'simulated ':''}vouchers. Print or export this batch.`);
 });});
-$('#print').addEventListener('click',()=>window.print());
-$('#csv').addEventListener('click',()=>{const cell=x=>{let v=String(x);if(/^[=+@\-\t\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};const rows=[['PIN','Allowance','Expiry policy','Profile','Batch'],...batch.map(v=>[v.pin,v.allowance,v.policy||'connected',v.profile,v.batch])];download('nelsonict-vouchers.csv',rows.map(row=>row.map(cell).join(',')).join('\r\n'),'text/csv');});
+$('#print').addEventListener('click',()=>{const frame=$('#batch-preview');frame.contentWindow.focus();frame.contentWindow.print();});
+$('#csv').addEventListener('click',()=>{const cell=x=>{let v=String(x);if(/^[=+@\-\t\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};const rows=[['Credential mode','Username','Password','Allowance','Expiry policy','Profile','Batch'],...batch.map(v=>[v.credential_mode||'pin',v.username||v.pin,v.password||v.pin,v.allowance,v.policy||'connected',v.profile,v.batch])];download('nelsonict-vouchers.csv',rows.map(row=>row.map(cell).join(',')).join('\r\n'),'text/csv');});
 function confirmation(title,message,word){return new Promise(resolve=>{const d=$('#confirm-dialog');$('#dialog-title').textContent=title;$('#dialog-text').textContent=message;$('#dialog-label').firstChild.textContent='Type '+word+' to confirm';$('#dialog-input').value='';d.returnValue='cancel';d.addEventListener('close',()=>resolve(d.returnValue==='confirm'&&$('#dialog-input').value===word),{once:true});d.showModal();});}
 $('#users-body').addEventListener('click',e=>{const b=e.target.closest('[data-disable]');if(!b)return;run(async()=>{if(!await confirmation('Disable this voucher?','The account record stays. Its active sessions and login cookies will be removed.','DISABLE'))return;await api('disable',{id:b.dataset.disable,confirmation:'DISABLE'});renderStatus(await api('status'));feedback('Voucher disabled; matching sessions and cookies removed.');});});
 async function loadHistory(){const {records}=await api('history');$('#history-list').innerHTML=records.length?records.map(r=>`<div class="card history-entry"><div class="card-heading"><h3>${escapeHTML(r.kind)} ${r.demo?'• demonstration':''}</h3>${r.kind!=='ticket-action'?`<button class="secondary" data-rollback="${escapeHTML(r.id)}">Rollback additions</button>`:''}</div><small>${escapeHTML(new Date(r.created*1000).toLocaleString())} • ${escapeHTML(r.id)}</small><ol>${r.entries.map(x=>`<li class="${x.state==='uncertain'?'uncertain':''}">${escapeHTML(x.label)} — <strong>${escapeHTML(x.state)}</strong></li>`).join('')}</ol></div>`).join(''):'<div class="card empty">No change records for this router on this computer.</div>';}

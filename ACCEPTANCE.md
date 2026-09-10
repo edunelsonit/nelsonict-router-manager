@@ -27,3 +27,11 @@ Status: **not executed on a real router**. Use a spare router or isolated lab wi
 20. Disable automation deliberately in the lab and demonstrate the dashboard's expired-active alert and manual cleanup. Inspect malformed policy and custom-profile rejection behavior.
 21. On a real phone, validate trusted HTTPS, wrong Origin/token rejection, private-IP binding, refresh timestamps, search/filter, disable cleanup and protected enable. Validate certificate SANs and firewall isolation from customers.
 22. Check native scripts directly on the requested RouterOS version. Python evaluator tests do not prove RouterOS syntax, policy permissions or actual execution.
+
+## v0.3 template and portal release gates
+
+23. Verify all editor fields, saved-template persistence, import/export, sample vs real preview and A4/58mm/80mm printing in actual browsers/printers.
+24. Generate independent credentials and PINs; confirm the router receives the same values printed and exported. Check mixed-mode template printing never hides a required password.
+25. Upload a copied portal folder with preserved RouterOS support files. Check the shared-profile warning, compatible login methods, directory activation, first unauthenticated login and restoration.
+26. Test real CHAP with the router's md5.js, HTTPS without protocol downgrade, missing md5.js, failed authentication, expiry-hook invocation and PIN users on two-field pages. Do not migrate separate-password users to a PIN-only portal without a plan.
+27. Interrupt activation and inspect the journal. Verify a stale plan or later profile change blocks unsafe activation/restore.

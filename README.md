@@ -2,7 +2,7 @@
 
 A local MikroTik management application for **Nelsonict Services Limited**: connect a router, inspect its configuration, review a setup plan, apply additions, and create printable hotspot vouchers.
 
-**Version 0.2.0 — pilot, not a production-certified release.** Targets the RouterOS v7 REST interface. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
+**Version 0.3.0 — pilot, not a production-certified release.** Targets the RouterOS v7 REST interface. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
 
 ## Run it
 
@@ -71,7 +71,11 @@ The new network is internet-only: forwarding toward RFC1918 and link-local desti
 
 **These are additive LAN scenarios, not factory-reset or full WAN installers.** The wizard never detaches a port from an existing bridge, changes a WAN, upgrades packages, changes global IPv6 settings, or resets the router. It refuses occupied ports and overlapping interface, DHCP-network and address-pool ranges. Existing firewall customizations can still conflict with the generated plan: review the exact operation list. A drop rule's presence is only a preliminary check, not a security audit.
 
-Hotspot setup uses RouterOS default portal assets and `http-chap,cookie`, with local users and RADIUS disabled for the newly created profile. Branded one-field login, HTTPS captive portal certificate provisioning and file uploads are future work. For an existing hotspot, inspect its existing login methods and FastTrack exclusions yourself. Profile rate limits can be bypassed by unsuitable FastTrack configuration.
+Hotspot setup uses RouterOS default portal assets and `http-chap,cookie`, with local users and RADIUS disabled for the newly created profile. Branded one-field PIN and two-field portals can now be generated and activated through the [template editor workflow](TEMPLATES.md). File upload remains a manual WinBox step; HTTPS captive portal certificate provisioning is future work. For an existing hotspot, inspect its existing login methods and FastTrack exclusions yourself. Profile rate limits can be bypassed by unsuitable FastTrack configuration.
+
+## Template editor and customer login pages
+
+Customize branding, colors, ticket text, PIN/username-password layout, A4 columns and thermal widths with a sample preview. Save/import/export templates, generate either credential type, and print actual batches. Export a branded RouterOS portal overlay, upload it through WinBox, then check and activate its directory with a recorded restore path. See [TEMPLATES.md](TEMPLATES.md) for installation and compatibility details.
 
 ## Owner dashboard and mobile access
 
@@ -84,8 +88,8 @@ The mobile web dashboard uses the same backend. See [MOBILE.md](MOBILE.md) for H
 1. Open Vouchers & users and review/install the router expiry checker with NTP synchronized.
 2. Select an existing plain user profile and hotspot server.
 3. Choose **elapsed**, **business-day closing**, **next-day startup**, **connected-time**, or **fixed date/time** expiry. Elapsed/connected modes support 1d, 3d, 7d and 28d. Daily policies have location and closing/fallback controls.
-4. Confirm creation of 1–100 random 10-digit PINs. Each batch receives a dedicated profile with the first-login hook; existing custom hooks are not overwritten.
-5. Print or export CSV. On the standard RouterOS page, enter the PIN in both username and password fields.
+4. Choose PIN-only or independent username/password credentials and a print template. Confirm creation of 1–100 accounts. Each batch receives a dedicated profile with the first-login hook; existing custom hooks are not overwritten.
+5. Print or export CSV. On the standard RouterOS page, PIN users enter the PIN in both fields. For single-field PIN login, install the generated portal as described in [TEMPLATES.md](TEMPLATES.md).
 6. Inspect the owner dashboard. Expiry disables accounts and removes active sessions/cookies while keeping account records. Owner controls work on any local hotspot account, including older tickets.
 
 The scheduler and activation record live on the router so enforcement does not depend on the management app staying open. **Native scripts still require real-router acceptance testing.** The checker runs every 30 seconds; this is not a second-exact cutoff guarantee. Location scheduling uses an explicit fixed UTC offset (Nigeria +60 minutes), without automatic daylight-saving changes. See [EXPIRY.md](EXPIRY.md) for exact policies and clock/power-loss behavior.
@@ -108,8 +112,8 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile
-python3 -m py_compile core.py server.py expiry.py
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates
+python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```
 

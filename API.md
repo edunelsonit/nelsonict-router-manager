@@ -45,3 +45,7 @@ User status adds:
 Disable and disconnect may partially succeed; consult history before retrying. A disable retry is allowed even when the account is already disabled, so remaining sessions/cookies can be cleaned up. Enable refuses expired, invalid-policy and clock-unverified managed tickets. A valid ticket can log in again after disconnect.
 
 The current token gives one trusted owner full access, and all clients share one router connection. Native-app account roles, revocable per-device pairing and cloud relay remain future work.
+
+## v0.3 templates and credentials
+
+See [TEMPLATES.md](TEMPLATES.md) for template routes, portal activation and credential-format fields. Separate usernames/passwords are returned only for newly generated batches; templates contain no ticket secrets.

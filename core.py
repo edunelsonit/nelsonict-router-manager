@@ -174,23 +174,22 @@ def build_plan(state, cfg):
     return {'scenario':scenario,'prefix':prefix,'operations':operations,'warnings':warnings,'snapshot':digest(state),'created':time.time()}
 
 DURATIONS = {'1d':'1d','3d':'3d','1w':'7d','28d':'28d'}
-def voucher_operations(profile, server, count, duration, existing_names):
+def voucher_operations(profile, server, count, duration, existing_names, options=None):
     if not profile or not server:
         raise ValidationError('Select a profile and hotspot server.')
     count = int(count)
     if not 1 <= count <= 100 or duration not in DURATIONS:
         raise ValidationError('Choose 1–100 vouchers and a supported connected-time allowance.')
+    from templates import credential_settings, credentials
+    settings=credential_settings(options or {})
     used = set(existing_names)
     batch = secrets.token_hex(4)
     operations, vouchers = [], []
     for _ in range(count):
-        while True:
-            pin = str(secrets.randbelow(9_000_000_000) + 1_000_000_000)
-            if pin not in used: break
-        used.add(pin)
-        values = {'name':pin,'password':pin,'server':server,'profile':profile,'limit-uptime':DURATIONS[duration],'comment':'ns-batch-'+batch}
-        operations.append({'path':'ip/hotspot/user','values':values,'label':'Create voucher ' + pin})
-        vouchers.append({'pin':pin,'allowance':DURATIONS[duration],'profile':profile,'batch':batch})
+        name,password=credentials(settings,used)
+        values = {'name':name,'password':password,'server':server,'profile':profile,'limit-uptime':DURATIONS[duration],'comment':'ns-batch-'+batch}
+        operations.append({'path':'ip/hotspot/user','values':values,'label':'Create voucher ' + name})
+        vouchers.append({'pin':name if settings['mode']=='pin' else None,'username':name,'password':password,'credential_mode':settings['mode'],'allowance':DURATIONS[duration],'profile':profile,'batch':batch})
     return operations, vouchers
 
 def execute(router, operations, journal):
