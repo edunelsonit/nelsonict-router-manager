@@ -38,6 +38,14 @@ Click **Open demonstration** to explore without touching any router. All demonst
 
 This is a desktop-hosted, single-owner application with a mobile web interface. Owners can access it through optional HTTPS on a trusted LAN or VPN. It is not a native Android/iOS app or multi-tenant SaaS. All authorized owner devices share one active router connection.
 
+## Saved hotspot locations
+
+Open **Connect your router → Saved hotspot locations**. Enter a location name and the router IP, username, service, port and optional certificate fingerprint, then click **Save connection settings**. Select a saved location, enter its password and click **Connect & inspect**. Use New location for another site; update its display name with Save, or remove a disconnected saved location.
+
+Passwords are session-only and must be supplied when connecting. Connection settings persist under `data/locations`. The application manages one active router at a time; all owner devices using this backend share that connection. Switching clears pending setup/portal plans. Your computer must have LAN or VPN access to the selected router; saving a remote address does not create connectivity.
+
+Saved locations have separate profile prices, voucher archives and change history, including when sites use identical local IP addresses and router identity names. Existing data from manual connections remains under the original manual-connection scope: connect manually to access it. It is not automatically migrated to a saved location. Retain a saved location if you need its archived data; removing and recreating it assigns a new ID. Back up the complete `data` directory to preserve location settings and archives.
+
 ## First router connection over LAN
 
 1. Connect the computer to the router's existing management LAN using Ethernet or Wi-Fi. A guest hotspot may require login or an explicitly permitted management path. Keep a backup and independent management access before changing network settings.
@@ -144,7 +152,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```

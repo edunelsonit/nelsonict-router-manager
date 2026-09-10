@@ -1,6 +1,6 @@
 # Validation record
 
-- 101 Python unit and local HTTP integration tests passed.
+- 106 Python unit and local HTTP integration tests passed.
 - Python compilation checks passed.
 - Frontend JavaScript syntax check passed.
 - HTTP tests exercised demo connect, plan, apply, voucher creation, user disable, rollback, disconnect, and rejection without an access token or Origin header.
@@ -8,7 +8,7 @@
 - No real RouterOS device was accessible. No RouterOS 7.24.2 certification is claimed.
 - Windows/macOS execution is unverified. Previous remote CI attempts failed before test steps started; local results are independent of GitHub Actions.
 
-Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history` from the project root. See ACCEPTANCE.md for the hardware release gate.
+Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations` from the project root. See ACCEPTANCE.md for the hardware release gate.
 
 ## v0.2 scope
 
@@ -37,3 +37,7 @@ Eight additional tests validate batch/profile selection, credential retention, p
 ## Account table controls
 
 Local JavaScript checks passed for combined filters, case-insensitive search, natural username sorting, duration and unlimited-allowance sorting, empty results and source-data preservation. Frontend syntax checks and all 101 Python tests passed. Browser visual/keyboard acceptance is still pending.
+
+## Saved locations
+
+Five added tests cover password-free persistence, rename/removal, connection validation, use of server-side saved settings, plan invalidation and isolation of prices/archives for sites with identical LAN IPs and router identities. All 106 tests passed locally; frontend syntax checks passed. Physical multi-site and browser interaction testing remain outstanding.

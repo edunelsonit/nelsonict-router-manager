@@ -27,6 +27,7 @@ function view(name){
  if(name==='history'&&router) run(loadHistory);
  if(name==='dashboard'&&router)renderOwner();
  if(name==='vouchers'&&router)run(loadProfilePrices);
+ if(name==='connect'&&token)run(()=>loadLocations());
  if(name==='templates')run(()=>window.loadTemplates());
 }
 document.querySelectorAll('[data-view]').forEach(x=>x.addEventListener('click',()=>view(x.dataset.view)));
@@ -34,7 +35,7 @@ function options(selector,values){const current=$(selector).value;$(selector).re
 function renderStatus(data){
  router=data;
  $('#sample-activity').hidden=!data.demo;
- $('#connection-status').textContent=data.demo?'Demo router':data.host;
+ $('#connection-status').textContent=data.demo?'Demo router':(data.location_name?data.location_name+' · ':'')+data.host;
  $('#disconnect').hidden=false;$('#mode-banner').hidden=!data.demo;
  const r=data.resource;
  $('#router-summary').innerHTML=[['ROUTER',data.identity.name],['ROUTEROS',r.version],['HARDWARE',r['board-name']||r['architecture-name']],['UPTIME',r.uptime]].map(([k,v])=>`<div class="metric"><small>${escapeHTML(k)}</small><strong>${escapeHTML(v)}</strong></div>`).join('');
@@ -49,7 +50,7 @@ function renderStatus(data){
  renderAccounts();
  renderOwner();
 }
-$('#connection-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const data=Object.fromEntries(new FormData(e.target));feedback('Connecting and reading the router configuration…');router=null;plan=null;$('#plan').hidden=true;$('#batch-panel').hidden=true;batch=[];$('#disconnect').hidden=true;$('#mode-banner').hidden=true;$('#connection-status').textContent='Not connected';try{renderStatus(await api('connect',data));}finally{e.target.elements.password.value='';}feedback('Connected. Open the owner dashboard or choose a setup scenario.');await loadProfilePrices();view('dashboard');});});
+$('#connection-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const data=Object.fromEntries(new FormData(e.target));if($('#saved-location').value)data.location_id=$('#saved-location').value;feedback('Connecting and reading the router configuration…');router=null;plan=null;$('#plan').hidden=true;$('#batch-panel').hidden=true;batch=[];$('#disconnect').hidden=true;$('#mode-banner').hidden=true;$('#connection-status').textContent='Not connected';try{renderStatus(await api('connect',data));}finally{e.target.elements.password.value='';}feedback('Connected. Open the owner dashboard or choose a setup scenario.');await loadProfilePrices();view('dashboard');});});
 $('#demo').addEventListener('click',()=>run(async()=>{renderStatus(await api('demo'));plan=null;batch=[];$('#plan').hidden=true;$('#batch-panel').hidden=true;feedback('Demonstration mode is ready. No real router is connected.');view('dashboard');}));
 $('#disconnect').addEventListener('click',()=>run(async()=>{await api('disconnect');router=null;plan=null;batch=[];$('#plan').hidden=true;$('#batch-panel').hidden=true;$('#disconnect').hidden=true;$('#mode-banner').hidden=true;$('#connection-status').textContent='Not connected';feedback('Disconnected. Router credentials have been cleared from application memory.');view('connect');}));
 $('#wizard-form').addEventListener('change',()=>{const choice=new FormData($('#wizard-form')).get('scenario');$('#new-network-fields').hidden=choice==='existing';$('#speed-fields').hidden=choice==='office';plan=null;$('#plan').hidden=true;});
@@ -140,3 +141,14 @@ $('#account-search').addEventListener('input',renderAccounts);
 for(const id of ['#account-profile','#account-status'])$(id).addEventListener('change',renderAccounts);
 document.querySelectorAll('[data-account-sort]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.accountSort;accountSort={key,direction:accountSort.key===key?-accountSort.direction:1};renderAccounts();}));
 $('#account-reset').addEventListener('click',()=>{$('#account-search').value='';$('#account-profile').value='';$('#account-status').value='';accountSort={key:'name',direction:1};renderAccounts();});
+
+let savedLocations=[];
+async function loadLocations(selected=$('#saved-location').value){const r=await api('locations/list');savedLocations=r.locations;$('#saved-location').replaceChildren(new Option('New / manual connection',''),...savedLocations.map(x=>new Option(x.name+' · '+x.host,x.id)));if(savedLocations.some(x=>x.id===selected))$('#saved-location').value=selected;}
+function fillLocation(){const row=savedLocations.find(x=>x.id===$('#saved-location').value),form=$('#connection-form');form.elements.password.value='';$('#location-name').value=row?.name||'';if(row){for(const key of ['host','username','transport','port','fingerprint'])form.elements[key].value=row[key];$('#router-transport').dispatchEvent(new Event('change'));form.elements.port.value=row.port;} }
+$('#load-locations').addEventListener('click',()=>run(()=>loadLocations()));
+$('#saved-location').addEventListener('change',fillLocation);
+$('#new-location').addEventListener('click',()=>{$('#saved-location').value='';$('#location-name').value='';$('#connection-form').reset();$('#router-transport').dispatchEvent(new Event('change'));});
+$('#save-location').addEventListener('click',()=>run(async()=>{const form=$('#connection-form');const data={id:$('#saved-location').value,name:$('#location-name').value};for(const key of ['host','username','port','transport','fingerprint'])data[key]=form.elements[key].value;const r=await api('locations/save',data);await loadLocations(r.location.id);feedback('Location settings saved. Enter the router password and connect.');}));
+$('#delete-location').addEventListener('click',()=>run(async()=>{const id=$('#saved-location').value;if(!id)throw new Error('Select a saved location.');if(!await confirmation('Remove saved location?','This removes its connection settings. Router configuration and archived files are retained.','REMOVE'))return;await api('locations/delete',{id});await loadLocations('');fillLocation();feedback('Saved location removed.');}));
+// Editing saved settings requires saving them before connection.
+$('#connection-form').addEventListener('input',e=>{if(e.target.name!=='password'&&$('#saved-location').value){$('#saved-location').value='';feedback('Connection settings changed. Save as a location or connect manually.');}});

@@ -67,3 +67,9 @@ New vouchers include `base_profile` and, when priced, `price_amount`, `currency`
 Owner-authenticated endpoints require a connected router. `POST /api/vouchers/history` returns batch summaries without credentials. `POST /api/vouchers/reprint` accepts `batch` and/or `profile`, plus nonnegative `offset`, and returns up to 100 confirmed vouchers, `total`, `offset` and `demo`. Filters intersect when both are supplied. Profile matches original base or generated router profile.
 
 `POST /api/vouchers/import` recovers readable credentials from existing Nelsonict-marked router accounts and returns added/skipped counts. Imported prices are deliberately blank; timestamps represent recovery time. It does not write to the router. No endpoint creates accounts during preview/reprint.
+
+## Saved router locations
+
+Owner-authenticated routes available before router connection: `/api/locations/list` returns metadata; `/api/locations/save` accepts `name`, `host`, `username`, `transport`, optional `port` and `fingerprint`, plus an existing `id` for updates; `/api/locations/delete` accepts `id` and refuses deletion of the active location. Password fields are discarded during save. Up to 100 locations are supported.
+
+`/api/connect` accepts `location_id` and `password` to load saved settings on the server. Status includes `location_id` and `location_name`. Switching clears pending plans; one backend connection is shared by all owner clients. Saved-location archives/prices are scoped by location ID and router identity. Manual connections retain their previous storage scope. Change history and rollback verify the location ID as well as router context.

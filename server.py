@@ -22,6 +22,7 @@ TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
+from locations import LocationStore
 from voucher_history import VoucherHistory, select as select_history, summaries as history_summaries
 from pricing import PriceStore, validate_price, profile_key
 
@@ -96,7 +97,7 @@ def new_network_checks(router,cfg):
 
 def new_journal(kind):
     ident = str(time.time_ns()) + '-' + secrets.token_hex(4)
-    journal = {'id':ident,'kind':kind,'host':STATE['host'],'identity':STATE['identity'],'demo':STATE['demo'],'created':time.time(),'entries':[]}
+    journal = {'id':ident,'kind':kind,'host':STATE['host'],'identity':STATE['identity'],'location_id':STATE.get('location_id'),'demo':STATE['demo'],'created':time.time(),'entries':[]}
     def save():
         if journal['demo']: return
         DATA.mkdir(mode=0o700,exist_ok=True)
@@ -124,7 +125,7 @@ def public_status():
         row.update(describe_user(x,sessions,clock['now'],clock['boot'],clock['verified']))
         visible.append(row)
     return {'demo':STATE['demo'],'host':STATE['host'],'resource':resource,
-            'identity':identity[0] if isinstance(identity,list) else identity,'transport':getattr(r,'transport','demo'),
+            'identity':identity[0] if isinstance(identity,list) else identity,'location_id':STATE.get('location_id'),'location_name':STATE.get('location_name'),'transport':getattr(r,'transport','demo'),
             'interfaces':r.call('interface'),
             'profiles':[{k:v for k,v in x.items() if k in ('.id','name','rate-limit','shared-users')} for x in r.call('ip/hotspot/user/profile')],
             'servers':r.call('ip/hotspot'),'users':visible,
@@ -166,37 +167,44 @@ def ticket_action(r,data):
 
 def voucher_archive():
     if STATE['demo']:return copy.deepcopy(STATE.setdefault('demo_vouchers',{}))
-    return VoucherHistory(DATA/'vouchers',STATE['host'],STATE['identity']).read()
+    return VoucherHistory(DATA/'vouchers',STATE.get('location_id') or STATE['host'],STATE['identity']).read()
 
 def save_voucher_archive(records):
     if STATE['demo']:STATE['demo_vouchers']=copy.deepcopy(records)
-    else:VoucherHistory(DATA/'vouchers',STATE['host'],STATE['identity']).write(records)
+    else:VoucherHistory(DATA/'vouchers',STATE.get('location_id') or STATE['host'],STATE['identity']).write(records)
 
 def profile_prices():
     if STATE['demo']:return STATE.setdefault('demo_prices',{})
-    return PriceStore(DATA/'prices',STATE['host'],STATE['identity']).read()
+    return PriceStore(DATA/'prices',STATE.get('location_id') or STATE['host'],STATE['identity']).read()
 
 def save_profile_prices(values):
     if STATE['demo']:STATE['demo_prices']=values
-    else:PriceStore(DATA/'prices',STATE['host'],STATE['identity']).write(values)
+    else:PriceStore(DATA/'prices',STATE.get('location_id') or STATE['host'],STATE['identity']).write(values)
 
 def route(path,data):
+    if path=='/api/locations/list':return {'locations':LocationStore(DATA/'locations').list()}
+    if path=='/api/locations/save':return {'location':LocationStore(DATA/'locations').save(data)}
+    if path=='/api/locations/delete':
+        if data.get('id')==STATE.get('location_id'):raise ValidationError('Disconnect this location before removing it.')
+        LocationStore(DATA/'locations').delete(data.get('id'));return {'ok':True}
     if path=='/api/templates/list':return {'templates':TemplateStore(DATA/'templates').list()}
     if path=='/api/templates/save':return {'template':TemplateStore(DATA/'templates').save(data.get('template'))}
     if path=='/api/templates/render':return {'html':print_html(data.get('template'),data.get('vouchers'),bool(data.get('demo',False)))}
     if path=='/api/templates/export':return portal_package(data.get('template'))
     if path=='/api/connect':
-        STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None)
+        location=LocationStore(DATA/'locations').get(data['location_id']) if data.get('location_id') else None
+        if location:data={**location,'password':data.get('password','')}
+        STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None,location_id=None,location_name=None,last_journal=None)
         r=Router(data.get('host',''),data.get('username',''),data.get('password',''),data.get('port'),data.get('fingerprint',''),data.get('transport','https'))
         s=snapshot(r)
         ident=s['system/identity']; ident=ident[0] if isinstance(ident,list) else ident
-        STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False)
+        STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False,location_id=location['id'] if location else None,location_name=location['name'] if location else None)
         return public_status()
     if path=='/api/demo':
-        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={},demo_prices={},demo_vouchers={})
+        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',location_id=None,location_name=None,demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={},demo_prices={},demo_vouchers={})
         return public_status()
     if path=='/api/disconnect':
-        STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None,demo=False,last_journal=None)
+        STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None,demo=False,last_journal=None,location_id=None,location_name=None)
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
@@ -360,7 +368,7 @@ def route(path,data):
         if DATA.exists():
             for f in sorted(DATA.glob('*.json'),reverse=True)[:50]:
                 record=json.loads(f.read_text())
-                if record['host']==STATE['host']: records.append(record)
+                if record.get('location_id')==STATE.get('location_id') and record['host']==STATE['host'] and record['identity']==STATE['identity']: records.append(record)
         if STATE['demo'] and STATE.get('last_journal'):
             records=[{k:v for k,v in row.items() if k!='save'} for row in reversed(list(STATE.get('demo_journals',{}).values()))]
         return {'records':records}
@@ -382,7 +390,7 @@ def route(path,data):
                     handle.flush(); os.fsync(handle.fileno())
                 os.replace(temp,f)
             journal['save']=save
-        if journal['host']!=STATE['host'] or journal['identity']!=STATE['identity'] or journal['demo']!=STATE['demo']:
+        if journal.get('location_id')!=STATE.get('location_id') or journal['host']!=STATE['host'] or journal['identity']!=STATE['identity'] or journal['demo']!=STATE['demo']:
             raise ValidationError('This change record belongs to another router or mode.')
         if journal['kind'] in ('portal-install','portal-deploy'):
             from urllib.parse import quote
