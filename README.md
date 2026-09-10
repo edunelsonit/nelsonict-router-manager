@@ -85,6 +85,36 @@ See connected users and sessions, first login for tracked tickets, expiry dates,
 
 The mobile web dashboard uses the same backend. See [MOBILE.md](MOBILE.md) for HTTPS LAN/VPN startup, certificate and token handling. See [API.md](API.md) for the future mobile-client contract.
 
+## Planned Android and iOS applications
+
+**Recommended stack: Dart with Flutter**, using one shared mobile codebase for Android and iPhone. Flutter is the framework; Dart is the language. This is the proposed mobile architecture, not an implemented or downloadable mobile application. The current release remains the Python backend with a responsive browser interface.
+
+| Component | Technology | Responsibility |
+|---|---|---|
+| Android and iOS app | Flutter / Dart | Owner dashboard, setup screens, account actions, voucher preview and printing |
+| Existing backend | Python | Router connections, validated setup operations, profile prices, voucher archives and change journals |
+| Future standalone router client | Dart | Direct RouterOS API/API-SSL and HTTP/HTTPS communication from the phone |
+
+### Stage 1: Mobile app connected to the existing backend
+
+Build the Flutter interface against the application endpoints described in [API.md](API.md). Reuse the Python setup, expiry, pricing and voucher-history logic. The backend computer must remain running and reachable over the management LAN or VPN. Its saved prices and voucher history remain shared by owner devices using that backend. Review mobile authentication and session handling before release; the current launch-token model is intended for a single owner.
+
+### Stage 2: Standalone phone-to-router operation
+
+Implement the router connection layer, validation, change journaling, price storage and voucher archive in Dart so the phone can connect directly using the router IP, username, password and selected service. This stage removes the running-computer requirement for local management. It requires porting and testing the existing Python behavior; compiling the interface alone does not provide standalone operation. Define archive migration and synchronization before allowing owners to switch between independent phone and desktop stores.
+
+The phone must have a network route to the MikroTik management address. A guest hotspot may require login or an explicitly permitted management path. Keep ticket expiry automation on the router so it does not depend on the mobile app staying open.
+
+### Mobile implementation and release requirements
+
+- Handle iOS local-network permission for connections to the router or backend.
+- Implement platform-appropriate credential storage and certificate verification. Test any intentionally supported plain HTTP/API LAN mode against Android and iOS networking requirements.
+- Validate voucher PDF generation, sharing and printing on actual supported printers. Desktop browser printing does not automatically provide native mobile printer support.
+- Build and sign iOS releases using macOS and Xcode, locally or through a suitable macOS build service. App Store distribution requires Apple Developer Program enrollment.
+- Test real Android and iPhone devices for LAN connections, network loss, interrupted writes, ticket actions, archive persistence and printing before publishing mobile releases.
+
+References: [Flutter platform support](https://flutter.dev/development), [iOS build and release requirements](https://docs.flutter.dev/deployment/ios), and [Apple local-network privacy guidance](https://developer.apple.com/videos/play/wwdc2020/10110/).
+
 ## Vouchers and configurable expiry
 
 1. Open Vouchers & users and review/install the router expiry checker with NTP synchronized.
