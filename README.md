@@ -152,7 +152,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```
@@ -183,3 +183,9 @@ Use Vouchers & users → Saved vouchers to preview and print by batch or profile
 In Hotspot accounts, search usernames, profiles or status; combine profile and Online/Offline/Disabled filters. Click User, Profile, Used, Allowance or Status headings to toggle ascending/descending order. Durations sort numerically and unlimited allowance sorts above finite limits. The displayed count reflects all active filters. Refresh retains filters and sorting; Reset filters & sort restores all accounts ordered by username.
 
 The owner dashboard presents tickets in a compact table with a bounded scroll area, sticky column headings and action buttons pinned at the right edge. Search/status filters and automatic refresh remain available. Expired-but-connected tickets are highlighted.
+
+## Payments and application backups
+
+Create Paystack checkout links using saved NGN profile prices. The running backend verifies successful payments and automatically issues one voucher per order for the connected location. Retrieve issued tickets from Saved vouchers; SMS/email delivery and a public captive-portal shop are not included. Configure `PAYSTACK_SECRET_KEY` on the backend and start in test mode. See [PAYMENTS.md](PAYMENTS.md) for setup, payment state, interruption handling and live-testing requirements.
+
+Download and restore profile prices, templates, voucher archives and saved location settings from Connection guide. Restores preview replacements and save a recovery copy first. Backup files contain voucher passwords; payment orders and secrets are excluded. See [BACKUPS.md](BACKUPS.md).

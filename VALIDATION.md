@@ -1,6 +1,6 @@
 # Validation record
 
-- 106 Python unit and local HTTP integration tests passed.
+- 118 Python unit and local HTTP integration tests passed.
 - Python compilation checks passed.
 - Frontend JavaScript syntax check passed.
 - HTTP tests exercised demo connect, plan, apply, voucher creation, user disable, rollback, disconnect, and rejection without an access token or Origin header.
@@ -8,7 +8,7 @@
 - No real RouterOS device was accessible. No RouterOS 7.24.2 certification is claimed.
 - Windows/macOS execution is unverified. Previous remote CI attempts failed before test steps started; local results are independent of GitHub Actions.
 
-Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations` from the project root. See ACCEPTANCE.md for the hardware release gate.
+Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business` from the project root. See ACCEPTANCE.md for the hardware release gate.
 
 ## v0.2 scope
 
@@ -41,3 +41,7 @@ Local JavaScript checks passed for combined filters, case-insensitive search, na
 ## Saved locations
 
 Five added tests cover password-free persistence, rename/removal, connection validation, use of server-side saved settings, plan invalidation and isolation of prices/archives for sites with identical LAN IPs and router identities. All 106 tests passed locally; frontend syntax checks passed. Physical multi-site and browser interaction testing remain outstanding.
+
+## Payments and backups
+
+Twelve tests cover mocked provider verification and duplicate prevention, mismatches, pending/network failures, uncertain issuance, initialization intent, backup roundtrip/recovery, invalid paths/data, write rollback and payment-ledger exclusion. All 118 local tests passed, including end-to-end application routes for a mocked paid order, archived price snapshot and restore connection guards. No real Paystack transaction, hardware payment issuance, browser visual pass or power-loss restore test is claimed.

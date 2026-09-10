@@ -73,3 +73,16 @@ Owner-authenticated endpoints require a connected router. `POST /api/vouchers/hi
 Owner-authenticated routes available before router connection: `/api/locations/list` returns metadata; `/api/locations/save` accepts `name`, `host`, `username`, `transport`, optional `port` and `fingerprint`, plus an existing `id` for updates; `/api/locations/delete` accepts `id` and refuses deletion of the active location. Password fields are discarded during save. Up to 100 locations are supported.
 
 `/api/connect` accepts `location_id` and `password` to load saved settings on the server. Status includes `location_id` and `location_name`. Switching clears pending plans; one backend connection is shared by all owner clients. Saved-location archives/prices are scoped by location ID and router identity. Manual connections retain their previous storage scope. Change history and rollback verify the location ID as well as router context.
+
+## Payments and backups
+
+All endpoints retain owner token/Origin checks; none are public customer APIs.
+
+- `POST /api/payments/create`: customer `email` plus voucher settings; amount is loaded server-side from the saved profile price. Returns reference, checkout URL and mode. Creates exactly one ticket entitlement.
+- `POST /api/payments/list`: order summaries for the active location, including state and issued batch.
+- `POST /api/payments/check`: verify eligible pending orders and attempt issuance; background processing also runs while the backend remains connected.
+- `POST /api/backup/export`: returns the application backup JSON.
+- `POST /api/backup/preview`: accepts `backup`, validates and reports file/replacement counts.
+- `POST /api/backup/restore`: accepts `backup` and `confirmation: RESTORE`; requires a disconnected router. Returns restored count and recovery filename.
+
+See PAYMENTS.md and BACKUPS.md for scope and limitations. Restore endpoints accept larger bounded requests; other API limits remain unchanged.

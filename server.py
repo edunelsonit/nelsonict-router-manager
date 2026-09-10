@@ -22,6 +22,8 @@ TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
+import backups
+from payments import Orders
 from locations import LocationStore
 from voucher_history import VoucherHistory, select as select_history, summaries as history_summaries
 from pricing import PriceStore, validate_price, profile_key
@@ -181,7 +183,32 @@ def save_profile_prices(values):
     if STATE['demo']:STATE['demo_prices']=values
     else:PriceStore(DATA/'prices',STATE.get('location_id') or STATE['host'],STATE['identity']).write(values)
 
-def route(path,data):
+def payment_store():
+    return Orders(DATA/'payments',STATE.get('location_id') or STATE['host'],STATE['identity'])
+
+def issue_payment(order):
+    r=active_router()
+    base=next((x for x in r.call('ip/hotspot/user/profile') if x.get('name')==order['config']['profile']),None)
+    if not base or base.get('.id')!=order['profile_id'] or (order.get('profile_snapshot') and base!=order['profile_snapshot']):raise ValidationError('Paid profile changed. Review this order.')
+    return route('/api/vouchers',order['config'],paid_order=order)
+
+def payment_worker():
+    while True:
+        time.sleep(30)
+        with LOCK:
+            if STATE.get('router') and not STATE.get('demo'):
+                try:payment_store().reconcile(issue_payment)
+                except Exception:pass
+
+def route(path,data,paid_order=None):
+    if path=='/api/backup/export':return backups.export(DATA)
+    if path=='/api/backup/preview':
+        bundle=backups.validate(data.get('backup'));current=backups.export(DATA)
+        return {'files':len(bundle['files']),'replace':sum(n in current['files'] for n in bundle['files']),'groups':sorted({n.split('/')[0] for n in bundle['files']})}
+    if path=='/api/backup/restore':
+        if STATE.get('router'):raise ValidationError('Disconnect the router before restoring local data.')
+        if data.get('confirmation')!='RESTORE':raise ValidationError('Review the backup preview and confirm RESTORE.')
+        return backups.restore(DATA,data.get('backup'))
     if path=='/api/locations/list':return {'locations':LocationStore(DATA/'locations').list()}
     if path=='/api/locations/save':return {'location':LocationStore(DATA/'locations').save(data)}
     if path=='/api/locations/delete':
@@ -208,6 +235,30 @@ def route(path,data):
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
+    if path=='/api/payments/list':
+        if STATE['demo']:return {'orders':[],'notice':'Payment checkout requires a real router and Paystack credentials.'}
+        rows=payment_store().store.read().values()
+        return {'orders':[{k:v for k,v in x.items() if k not in ('merchant','config','profile_id','profile_snapshot')} for x in sorted(rows,key=lambda x:x['created'],reverse=True)]}
+    if path=='/api/payments/create':
+        if STATE['demo']:raise ValidationError('Real payments are unavailable in demonstration mode.')
+        base=next((x for x in r.call('ip/hotspot/user/profile') if x.get('name')==data.get('profile')),None)
+        if not base:raise ValidationError('Choose an existing user profile.')
+        price=profile_prices().get(profile_key(base))
+        if not price:raise ValidationError('Save a selling price for this profile first.')
+        cfg={k:data[k] for k in ('profile','server','duration','credential_mode','pin_length','username_prefix','username_length','password_length','expiry_mode','utc_offset','closing_time','fallback_time','fixed_at') if k in data}
+        cfg.update(count=1,confirmation='CREATE')
+        if cfg.get('server') not in [x['name'] for x in r.call('ip/hotspot') if x.get('disabled')!='true']:raise ValidationError('Select an enabled hotspot.')
+        voucher_operations(cfg['profile'],cfg['server'],1,cfg.get('duration','1d'),[],cfg)
+        if 'expiry_mode' in cfg:
+            if engine_operations(r):raise ValidationError('Install expiry automation before selling tracked tickets.')
+            resource=r.call('system/resource');clock=router_clock(r,resource[0] if isinstance(resource,list) else resource)
+            if not clock['verified']:raise ValidationError('Synchronize router time before selling tickets.')
+            policy_from_form(cfg,clock['now']);expiry_profile(base,'00000000')
+        order=payment_store().create(data.get('email'),price,cfg,base['.id'],base)
+        return {k:order[k] for k in ('reference','checkout_url','state','amount','currency','domain')}
+    if path=='/api/payments/check':
+        if not STATE['demo']:payment_store().reconcile(issue_payment)
+        return route('/api/payments/list',{})
     if path=='/api/vouchers/history':
         return {'batches':history_summaries(voucher_archive())}
     if path=='/api/vouchers/reprint':
@@ -336,10 +387,11 @@ def route(path,data):
                 if policy['mode']!='connected':op['values']['limit-uptime']='0s'
                 voucher.update(profile=profile_op['values']['name'],policy=policy['mode'],allowance=data.get('duration','1d') if policy['mode'] in ('elapsed','connected') else policy['mode'])
             operations.insert(0,profile_op)
-        price=profile_prices().get(profile_key(base))
+        price=paid_order['price'] if paid_order else profile_prices().get(profile_key(base))
         for voucher in vouchers:
             voucher['base_profile']=profile
-            if price:voucher.update(price_amount=price['amount'],currency=price['currency'],price_label=price['label'])
+            if paid_order:voucher.update(payment_reference=paid_order['reference'],payment_domain=paid_order['domain'])
+            if price:voucher.update(price_amount=price['amount'],currency=price['currency'],price_label=('TEST PAYMENT · ' if paid_order and paid_order['domain']=='test' else '')+price['label'])
         journal=new_journal('vouchers')
         records=voucher_archive()
         record={'batch':vouchers[0]['batch'],'created':time.time(),'vouchers':[{**v,'creation_state':'pending'} for v in vouchers]}
@@ -427,9 +479,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
         if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
-        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
+        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
-        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
+        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
         if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):
@@ -437,7 +489,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.headers.get('Content-Type')!='application/json': raise ValidationError('JSON required.')
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<131072: raise ValidationError('Request size invalid.')
+            if not 0<length<(backups.LIMIT*2 if self.path in ('/api/backup/preview','/api/backup/restore') else 131072): raise ValidationError('Request size invalid.')
             data=json.loads(self.rfile.read(length))
             if not isinstance(data,dict): raise ValidationError('JSON object required.')
             with LOCK: result=route(self.path,data)
@@ -475,6 +527,7 @@ def main():
     server.daemon_threads=True
     url=f'{server.app_origin}/#token={TOKEN}'
     print('Nelsonict Router Manager 0.3.0 — local pilot build\nKeep this terminal open. Press Ctrl+C to stop.\nPrivate launch URL:\n'+url,flush=True)
+    threading.Thread(target=payment_worker,daemon=True).start()
     if not args.no_browser: webbrowser.open(url)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
