@@ -61,3 +61,9 @@ See [TEMPLATES.md](TEMPLATES.md) for template routes, portal activation and cred
 `POST /api/profiles/prices` lists existing user profiles with `id`, `name` and optional `price` (`amount`, `currency`, `label`). `POST /api/profiles/price` accepts matching `id` and `name`, decimal-string `amount` (0–999999999.99; at most two decimals), and uppercase three-letter `currency`. Empty amount removes the saved price. These routes require the normal owner token and a router connection.
 
 New vouchers include `base_profile` and, when priced, `price_amount`, `currency`, and `price_label`. The price is copied server-side from the selected base profile and takes precedence over the template price during rendering. Prices are stored on the backend, not in router credentials or expiry comments.
+
+## Voucher history and reprinting
+
+Owner-authenticated endpoints require a connected router. `POST /api/vouchers/history` returns batch summaries without credentials. `POST /api/vouchers/reprint` accepts `batch` and/or `profile`, plus nonnegative `offset`, and returns up to 100 confirmed vouchers, `total`, `offset` and `demo`. Filters intersect when both are supplied. Profile matches original base or generated router profile.
+
+`POST /api/vouchers/import` recovers readable credentials from existing Nelsonict-marked router accounts and returns added/skipped counts. Imported prices are deliberately blank; timestamps represent recovery time. It does not write to the router. No endpoint creates accounts during preview/reprint.

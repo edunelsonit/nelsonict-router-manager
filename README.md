@@ -114,7 +114,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```
@@ -135,3 +135,7 @@ The supplied `Mikhmon Server.zip` was inspected as a feature reference. Its `inc
 - [Official downloads and changelogs](https://mikrotik.com/download/changelogs)
 
 The linked legacy documentation warns that it is frozen; MikroTik directs readers to its [current manual](https://manual.mikrotik.com/docs/introduction/). Confirm behavior on the exact deployed version before business use.
+
+## Saved voucher reprinting
+
+Use Vouchers & users → Saved vouchers to preview and print by batch or profile, 100 tickets per page. New batch credentials and prices persist in private local `data/vouchers` files; protect and back up this directory. Recover older router batches when passwords and Nelsonict batch markers are available. See TEMPLATES.md for recovery limits.

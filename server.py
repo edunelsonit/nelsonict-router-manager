@@ -22,6 +22,7 @@ TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
+from voucher_history import VoucherHistory, select as select_history, summaries as history_summaries
 from pricing import PriceStore, validate_price, profile_key
 
 from portal_install import prepare as prepare_portal, deploy as deploy_portal
@@ -163,6 +164,14 @@ def ticket_action(r,data):
         entry['state']='partial' if entry['state']=='account-updated' else 'uncertain';journal['save']();raise
     return {'ok':True,'journal':journal['id'],'action':action}
 
+def voucher_archive():
+    if STATE['demo']:return copy.deepcopy(STATE.setdefault('demo_vouchers',{}))
+    return VoucherHistory(DATA/'vouchers',STATE['host'],STATE['identity']).read()
+
+def save_voucher_archive(records):
+    if STATE['demo']:STATE['demo_vouchers']=copy.deepcopy(records)
+    else:VoucherHistory(DATA/'vouchers',STATE['host'],STATE['identity']).write(records)
+
 def profile_prices():
     if STATE['demo']:return STATE.setdefault('demo_prices',{})
     return PriceStore(DATA/'prices',STATE['host'],STATE['identity']).read()
@@ -184,13 +193,36 @@ def route(path,data):
         STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False)
         return public_status()
     if path=='/api/demo':
-        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={},demo_prices={})
+        STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={},demo_prices={},demo_vouchers={})
         return public_status()
     if path=='/api/disconnect':
         STATE.update(router=None,plan=None,upload_plan=None,portal_plan=None,host=None,identity=None,demo=False,last_journal=None)
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
+    if path=='/api/vouchers/history':
+        return {'batches':history_summaries(voucher_archive())}
+    if path=='/api/vouchers/reprint':
+        if not data.get('batch') and not data.get('profile'):raise ValidationError('Select a batch or profile.')
+        offset=int(data.get('offset',0))
+        if offset<0:raise ValidationError('Invalid page offset.')
+        rows=select_history(voucher_archive(),data.get('batch'),data.get('profile'))
+        return {'vouchers':rows[offset:offset+100],'total':len(rows),'offset':offset,'demo':STATE['demo']}
+    if path=='/api/vouchers/import':
+        records=voucher_archive();known={v['username'] for record in records.values() for v in record['vouchers']};added=skipped=0
+        for user in r.call('ip/hotspot/user'):
+            if user.get('name') in known:continue
+            comment=str(user.get('comment',''))
+            try:policy=decode(comment)
+            except ValidationError:skipped+=1;continue
+            batch_id=policy.get('batch') if policy else (comment[9:] if comment.startswith('ns-batch-') else None)
+            if not batch_id or not __import__('re').fullmatch('[0-9a-f]{8}',batch_id) or not user.get('password'):skipped+=1;continue
+            record=records.setdefault(batch_id,{'batch':batch_id,'created':time.time(),'vouchers':[]})
+            name=user['name'];password=user['password']
+            record['vouchers'].append({'username':name,'password':password,'pin':name if name==password else None,'credential_mode':'pin' if name==password else 'credentials','profile':user.get('profile',''),'base_profile':user.get('profile',''),'batch':batch_id,'creation_state':'created','allowance':user.get('limit-uptime',''),'price_label':'','policy':policy.get('mode','connected') if policy else 'connected'})
+            known.add(name);added+=1
+        save_voucher_archive(records)
+        return {'added':added,'skipped':skipped}
     if path=='/api/profiles/prices':
         prices=profile_prices()
         return {'profiles':[{'id':x['.id'],'name':x['name'],'price':prices.get(profile_key(x))} for x in r.call('ip/hotspot/user/profile')]}
@@ -301,7 +333,15 @@ def route(path,data):
             voucher['base_profile']=profile
             if price:voucher.update(price_amount=price['amount'],currency=price['currency'],price_label=price['label'])
         journal=new_journal('vouchers')
-        execute(r,operations,journal)
+        records=voucher_archive()
+        record={'batch':vouchers[0]['batch'],'created':time.time(),'vouchers':[{**v,'creation_state':'pending'} for v in vouchers]}
+        records[record['batch']]=record
+        save_voucher_archive(records)  # Preserve credentials before any router write.
+        try:execute(r,operations,journal)
+        finally:
+            states={e['values'].get('name'):e['state'] for e in journal['entries'] if e['path']=='ip/hotspot/user'}
+            for v in record['vouchers']:v['creation_state']=states.get(v['username'],'not-created')
+            save_voucher_archive(records)
         return {'vouchers':vouchers,'journal':journal['id'],'demo':STATE['demo']}
     if path=='/api/disable':return ticket_action(r,{**data,'action':'disable'})
     if path=='/api/ticket/action':return ticket_action(r,data)

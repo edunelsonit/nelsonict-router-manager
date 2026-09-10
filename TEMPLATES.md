@@ -24,7 +24,7 @@ Each batch avoids usernames already present on the router and duplicates within 
 
 Choose the print template and the existing expiry policy. After creating the batch, inspect the actual print preview and use Print vouchers or Export CSV. Printing opens the preview frame's print dialog; it does not print the entire management dashboard. If a PIN template is selected for accounts with different passwords, batch printing switches to the two-field layout to avoid hiding a necessary password. A direct API request to render different credentials in PIN-only layout is rejected.
 
-The CSV includes mode, username, password, allowance, policy, profile and batch. Protect CSVs, printed tickets and screenshots. Passwords are returned for the newly created batch and remain in browser memory until the page closes; the app does not save them to template files. Print/export before closing the page. Reprinting historical batches with independent passwords is not implemented.
+The CSV includes mode, username, password, allowance, policy, profile and batch. Protect CSVs, printed tickets and screenshots. Voucher credentials are saved in the private local voucher archive for later preview and reprinting. They are not stored in template files or change journals. Protect the backend computer and its backups.
 
 ## Install a matching customer login page
 
@@ -77,3 +77,13 @@ In **Vouchers & users → User profile prices**, select a profile, enter its pri
 Prices appear beside profiles and automatically flow into newly generated tickets, print previews and CSV exports. Tracked expiry batches retain the selected base profile's price even though the router uses a dedicated batch profile. Later price changes do not alter an existing batch. A saved price overrides the template fallback price; without a saved profile price, the template label is used. Zero prints as NGN 0.00; saving a blank amount removes the profile price.
 
 Prices are local application metadata, scoped to router IP/identity and profile ID/name, stored under `data/prices`. They do not change RouterOS settings or collect payments. Back up this folder when moving the backend. A router IP/identity or profile change requires checking/re-entering prices. Owner phones using the same backend share these prices; separate installations do not synchronize them.
+
+## Preview and reprint existing vouchers
+
+Open **Vouchers & users → Saved vouchers · preview & reprint** and select **Refresh saved vouchers**. Select a batch, a profile, or both, then **Generate preview**. Choose the print template and use **Print vouchers** or **Export CSV**. Profile selections include all saved batches for that base profile; tracked expiry profiles remain associated with their original base profile. Use Previous/Next 100 to print each page of a larger selection.
+
+New batches preserve usernames, passwords, credential mode, allowance and saved profile price in `data/vouchers`, scoped to router IP and identity. Files are written atomically with restrictive local permissions, but are not encrypted at rest. Back up this directory to retain reprinting after moving the backend. Router management passwords are never stored there. Demo archives are memory-only.
+
+Credentials are archived before router writes. Only confirmed creations are offered for reprinting; interrupted or uncertain entries require manual reconciliation. Reprinting is historical: it does not extend expiry, re-enable users or recreate accounts deleted by rollback. Check account status before distributing reprints.
+
+For batches generated before this feature, choose **Recover existing router batches**. The router must return the account password and an existing Nelsonict batch marker. Missing passwords are never guessed. Recovered batches have unknown original creation dates (the archive records recovery time) and no historical price; their current router profile is used for filtering. Other applications' unmarked vouchers cannot be reconstructed as Nelsonict batches.

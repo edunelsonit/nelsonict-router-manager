@@ -1,6 +1,6 @@
 # Validation record
 
-- 93 Python unit and local HTTP integration tests passed.
+- 101 Python unit and local HTTP integration tests passed.
 - Python compilation checks passed.
 - Frontend JavaScript syntax check passed.
 - HTTP tests exercised demo connect, plan, apply, voucher creation, user disable, rollback, disconnect, and rejection without an access token or Origin header.
@@ -8,7 +8,7 @@
 - No real RouterOS device was accessible. No RouterOS 7.24.2 certification is claimed.
 - Windows/macOS execution is unverified. Previous remote CI attempts failed before test steps started; local results are independent of GitHub Actions.
 
-Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing` from the project root. See ACCEPTANCE.md for the hardware release gate.
+Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history` from the project root. See ACCEPTANCE.md for the hardware release gate.
 
 ## v0.2 scope
 
@@ -29,3 +29,7 @@ Hardware acceptance remains required for native `file/copy` command arguments an
 ## Profile pricing
 
 Eight added tests cover decimal validation, zero/removal, router-scoped persistence, demo isolation, frozen batch prices, tracked-profile inheritance and escaped printing. All 93 local tests passed. No real browser/printer test is claimed.
+
+## Voucher history
+
+Eight additional tests validate batch/profile selection, credential retention, pagination, partial writes, archive failures before router mutation, persistent router isolation, legacy recovery without guessed credentials/prices and demo reset. All 101 local tests passed. Browser/printer and real-router recovery acceptance remain outstanding.
