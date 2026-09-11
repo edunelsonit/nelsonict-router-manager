@@ -4,6 +4,7 @@ from pathlib import Path
 from core import ValidationError, Router
 from templates import validate_template
 from pricing import validate_price
+from sales import SalesDB,validate_dump
 
 LIMIT=12*1024*1024
 PATTERN=r'(templates/[A-Za-z0-9_-]{1,40}|(?:prices|vouchers|locations)/[0-9a-f]{64})\.json'
@@ -11,8 +12,9 @@ def validate(bundle):
     if not isinstance(bundle,dict) or bundle.get('format')!='nelsonict-backup-1' or not isinstance(bundle.get('files'),dict):raise ValidationError('Invalid Nelsonict backup.')
     if len(json.dumps(bundle).encode())>LIMIT or len(bundle['files'])>2000:raise ValidationError('Backup is too large.')
     for name,value in bundle['files'].items():
-        if not re.fullmatch(PATTERN,name) or not isinstance(value,dict):raise ValidationError('Invalid backup path or record.')
-        if name.startswith('templates/'):
+        if (name!='sales/ledger.json' and not re.fullmatch(PATTERN,name)) or not isinstance(value,dict):raise ValidationError('Invalid backup path or record.')
+        if name=='sales/ledger.json':validate_dump(value)
+        elif name.startswith('templates/'):
             validate_template(value)
             if Path(name).stem!=value.get('id'):raise ValidationError('Template filename does not match its ID.')
         elif name.startswith('prices/'):
@@ -37,6 +39,12 @@ def export(root):
         for path in directory.glob('*.json'):
             if path.is_symlink():raise ValidationError('Symlinked data files are unsupported.')
             files[group+'/'+path.name]=json.loads(path.read_text(encoding='utf-8'))
+    database=root/'sales.sqlite3'
+    if database.is_symlink():raise ValidationError('Symlinked sales database refused.')
+    if database.exists():
+        db=SalesDB(database)
+        try:files['sales/ledger.json']=db.export()
+        finally:db.close()
     return validate({'format':'nelsonict-backup-1','created':time.time(),'files':files})
 
 def write(path,value):
@@ -54,11 +62,17 @@ def restore(root,bundle):
     changed=[]
     try:
         for name,value in bundle['files'].items():
+            if name=='sales/ledger.json':continue
             # Track intent so rollback covers errors after replacement too.
             changed.append(name);write(root/name,value)
+        if 'sales/ledger.json' in bundle['files']:
+            db=SalesDB(root/'sales.sqlite3')
+            try:db.restore(bundle['files']['sales/ledger.json'])
+            finally:db.close()
     except Exception:
         for name in reversed(changed):
             if name in before['files']:write(root/name,before['files'][name])
             elif (root/name).exists() and not (root/name).is_symlink():(root/name).unlink()
         raise
-    return {'restored':len(changed),'recovery':recovery.name}
+    return {'restored':len(bundle['files']),'recovery':recovery.name}
+

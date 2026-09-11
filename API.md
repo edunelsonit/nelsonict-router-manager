@@ -89,3 +89,13 @@ See PAYMENTS.md and BACKUPS.md for scope and limitations. Restore endpoints acce
 
 
 Payment creation additionally accepts `provider` (`paystack`, `monnify`, `flutterwave`; defaults to Paystack) and `customer_name` (required for Monnify). The provider is stored with the order and returned in checkout responses. Verification uses that stored provider and its original merchant configuration. See PAYMENTS.md for setup.
+
+## Sales reports (SQLite)
+
+All routes require the owner token and an active location/router context.
+
+- `/api/sales/report`: `period` daily/monthly, inclusive `from`/`to` YYYY-MM-DD dates, `utc_offset` minutes, optional `profile`, inventory `status` (all/sold/unsold/payment-pending/test), `batch`, username `query` and zero-based `page`. Returns report rows (period/profile/currency/sold/amount_minor), 100 inventory rows per page, counts, total and profiles. Date range affects sales totals; batch/status/query affect current inventory; profile affects both.
+- `/api/sales/sell`: inventory `id` and optional decimal-string `amount`/three-letter `currency`; otherwise uses the saved voucher price. Records a cash sale at current time. Rejects test/payment vouchers, cross-location IDs, missing prices and duplicates.
+- `/api/sales/unsell`: `id`, `confirmation: CORRECT`. Marks a cash sale void while retaining its audit row. It cannot refund or reverse provider payments.
+
+Reports index confirmed archives and issued live payment orders idempotently. SQLite schema version 1 stores metadata and sales only; payment processing remains in the existing order store. Backups include the sales ledger as structured JSON.

@@ -4,7 +4,7 @@ const token = new URLSearchParams(location.hash.slice(1)).get('token') || sessio
 if(token) sessionStorage.setItem('ns-launch',token);
 history.replaceState(null,'',location.pathname);
 let router = null, plan = null, batch = [], busy = false, currentView='connect';
-const titles = {connect:'Connect your router',templates:'Voucher template editor',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
+const titles = {sales:'Sales reports',connect:'Connect your router',templates:'Voucher template editor',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function feedback(message,error=false){const el=$('#feedback');el.textContent=message;el.classList.toggle('error',error);el.hidden=false;}
 async function api(path,data={}){
@@ -19,11 +19,12 @@ async function api(path,data={}){
 }
 async function run(fn){try{await fn();}catch(e){feedback(e.message,true);}}
 function view(name){
- if(['dashboard','wizard','vouchers','history'].includes(name)&&!router){feedback('Connect to a router or open demonstration mode first.',true);name='connect';}
+ if(['dashboard','wizard','vouchers','history','sales'].includes(name)&&!router){feedback('Connect to a router or open demonstration mode first.',true);name='connect';}
  document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==name);
  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('selected',x.dataset.view===name));
  currentView=name;
  $('#view-title').textContent=titles[name];
+ if(name==='sales'&&router)run(()=>loadSales(0));
  if(name==='history'&&router) run(loadHistory);
  if(name==='dashboard'&&router)renderOwner();
  if(name==='vouchers'&&router)run(loadProfilePrices);
@@ -152,3 +153,4 @@ $('#save-location').addEventListener('click',()=>run(async()=>{const form=$('#co
 $('#delete-location').addEventListener('click',()=>run(async()=>{const id=$('#saved-location').value;if(!id)throw new Error('Select a saved location.');if(!await confirmation('Remove saved location?','This removes its connection settings. Router configuration and archived files are retained.','REMOVE'))return;await api('locations/delete',{id});await loadLocations('');fillLocation();feedback('Saved location removed.');}));
 // Editing saved settings requires saving them before connection.
 $('#connection-form').addEventListener('input',e=>{if(e.target.name!=='password'&&$('#saved-location').value){$('#saved-location').value='';feedback('Connection settings changed. Save as a location or connect manually.');}});
+

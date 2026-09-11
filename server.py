@@ -23,6 +23,7 @@ LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
 import backups
+from sales import SalesDB, scope_key
 from payments import Orders
 from locations import LocationStore
 from voucher_history import VoucherHistory, select as select_history, summaries as history_summaries
@@ -183,6 +184,18 @@ def save_profile_prices(values):
     if STATE['demo']:STATE['demo_prices']=values
     else:PriceStore(DATA/'prices',STATE.get('location_id') or STATE['host'],STATE['identity']).write(values)
 
+def sales_database():
+    if STATE['demo']:
+        if not STATE.get('demo_sales'):STATE['demo_sales']=SalesDB(':memory:')
+        return STATE['demo_sales']
+    return SalesDB(DATA/'sales.sqlite3')
+
+def sales_scope():return scope_key(STATE.get('location_id') or STATE['host'],STATE['identity'])
+
+def synchronize_sales(db):
+    orders={} if STATE['demo'] else payment_store().store.read()
+    db.sync(sales_scope(),voucher_archive(),orders)
+
 def payment_store():
     return Orders(DATA/'payments',STATE.get('location_id') or STATE['host'],STATE['identity'])
 
@@ -228,6 +241,8 @@ def route(path,data,paid_order=None):
         STATE.update(router=r,host=r.host,identity=ident.get('name'),demo=False,location_id=location['id'] if location else None,location_name=location['name'] if location else None)
         return public_status()
     if path=='/api/demo':
+        if STATE.get('demo_sales'):STATE['demo_sales'].close()
+        STATE['demo_sales']=None
         STATE.update(router=DemoRouter(),host='Demonstration only',identity='demo',location_id=None,location_name=None,demo=True,plan=None,upload_plan=None,portal_plan=None,last_journal=None,demo_journals={},demo_prices={},demo_vouchers={})
         return public_status()
     if path=='/api/disconnect':
@@ -235,6 +250,20 @@ def route(path,data,paid_order=None):
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
+    if path in ('/api/sales/report','/api/sales/sell','/api/sales/unsell'):
+        db=sales_database()
+        try:
+            synchronize_sales(db);scope=sales_scope()
+            if path=='/api/sales/sell':
+                db.sell(scope,data.get('id'),data.get('amount'),data.get('currency'));return {'ok':True}
+            if path=='/api/sales/unsell':
+                if data.get('confirmation')!='CORRECT':raise ValidationError('Confirm CORRECT to reverse a recorded cash sale.')
+                db.unsell(scope,data.get('id'));return {'ok':True}
+            result=db.inventory(scope,data)
+            result.update(reports=db.report(scope,data),profiles=[r[0] for r in db.db.execute('SELECT DISTINCT profile FROM inventory WHERE scope=? ORDER BY profile',(scope,))],demo=STATE['demo'])
+            return result
+        finally:
+            if not STATE['demo']:db.close()
     if path=='/api/payments/list':
         if STATE['demo']:return {'orders':[],'notice':'Payment checkout requires a real router and payment provider credentials.'}
         rows=payment_store().store.read().values()
@@ -479,9 +508,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
         if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
-        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
+        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/sales.js':'sales.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
-        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
+        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','sales.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
         if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):

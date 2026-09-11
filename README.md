@@ -152,7 +152,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways test_sales
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```
@@ -190,3 +190,13 @@ Create Paystack, Monnify or Flutterwave checkout links using saved NGN profile p
 
 Download and restore profile prices, templates, voucher archives and saved location settings from Connection guide. Restores preview replacements and save a recovery copy first. Backup files contain voucher passwords; payment orders and secrets are excluded. See [BACKUPS.md](BACKUPS.md).
 
+
+## SQLite sales ledger and daily/monthly reports
+
+Open **Sales reports** after connecting to a location. Filter the date range and profile, select Daily or Monthly, and set the UTC offset (Nigeria: +60 minutes). Totals group by profile and currency; Export report CSV downloads the displayed totals. Values are gross recorded sales, before gateway fees/refunds, not profit or provider settlement balances.
+
+The inventory lists confirmed archived vouchers as sold, unsold, payment pending/review or test. Filter by profile, batch, username and status. Record cash sales at the actual amount received, or correct a mistaken cash entry back to unsold with an audit record. Unsold means no recorded sale; old cash sales are not guessed from ticket use. Expiry and account access remain separate from sale status.
+
+Verified, issued live-provider orders are indexed automatically when sales reports load. Test payments and paid-but-unissued/review orders do not count as sales. Each voucher has at most one active sale. New online sales use issuance time; older orders without that timestamp fall back to verification/order-creation time and may need historical reconciliation.
+
+Python's built-in SQLite stores inventory metadata and sale/correction records in `data/sales.sqlite3`, with schema versioning, indexes and transactional writes. Money uses integer minor units. This database contains no voucher or router passwords. Existing templates, credentials, payment orders and router settings retain their established stores; no wholesale migration is required. SQLite data is included in the application backup/restore tool. See [SALES.md](SALES.md).

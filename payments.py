@@ -65,10 +65,10 @@ class Orders:
                 if result.get('reference')!=ref or type(result.get('amount')) is not int or result['amount']!=order['amount'] or result.get('currency')!=order['currency'] or result.get('domain')!=order['domain'] or str(result.get('customer',{}).get('email','')).casefold()!=order['email'].casefold():
                     order['state']='verification-mismatch';self.store.write(records);continue
                 # Intent saved before any router write; never automatically repeat issuance.
-                order['state']='issuing';self.store.write(records)
+                order['state']='issuing';order['verified_at']=time.time();self.store.write(records)
                 try:
                     result=issue(order)
-                    order.update(state='issued',batch=result['vouchers'][0]['batch'],journal=result['journal'])
+                    order.update(state='issued',issued_at=time.time(),batch=result['vouchers'][0]['batch'],journal=result['journal'])
                 except Exception:order['state']='needs-review'
                 self.store.write(records)
             except Exception:continue  # Network failure leaves pending; no issue before verification.
