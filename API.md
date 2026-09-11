@@ -86,3 +86,6 @@ All endpoints retain owner token/Origin checks; none are public customer APIs.
 - `POST /api/backup/restore`: accepts `backup` and `confirmation: RESTORE`; requires a disconnected router. Returns restored count and recovery filename.
 
 See PAYMENTS.md and BACKUPS.md for scope and limitations. Restore endpoints accept larger bounded requests; other API limits remain unchanged.
+
+
+Payment creation additionally accepts `provider` (`paystack`, `monnify`, `flutterwave`; defaults to Paystack) and `customer_name` (required for Monnify). The provider is stored with the order and returned in checkout responses. Verification uses that stored provider and its original merchant configuration. See PAYMENTS.md for setup.

@@ -236,7 +236,7 @@ def route(path,data,paid_order=None):
     r=active_router()
     if path=='/api/status': return public_status()
     if path=='/api/payments/list':
-        if STATE['demo']:return {'orders':[],'notice':'Payment checkout requires a real router and Paystack credentials.'}
+        if STATE['demo']:return {'orders':[],'notice':'Payment checkout requires a real router and payment provider credentials.'}
         rows=payment_store().store.read().values()
         return {'orders':[{k:v for k,v in x.items() if k not in ('merchant','config','profile_id','profile_snapshot')} for x in sorted(rows,key=lambda x:x['created'],reverse=True)]}
     if path=='/api/payments/create':
@@ -254,8 +254,8 @@ def route(path,data,paid_order=None):
             resource=r.call('system/resource');clock=router_clock(r,resource[0] if isinstance(resource,list) else resource)
             if not clock['verified']:raise ValidationError('Synchronize router time before selling tickets.')
             policy_from_form(cfg,clock['now']);expiry_profile(base,'00000000')
-        order=payment_store().create(data.get('email'),price,cfg,base['.id'],base)
-        return {k:order[k] for k in ('reference','checkout_url','state','amount','currency','domain')}
+        order=payment_store().create(data.get('email'),price,cfg,base['.id'],base,data.get('provider','paystack'),data.get('customer_name',''))
+        return {k:order[k] for k in ('reference','checkout_url','state','amount','currency','domain','provider')}
     if path=='/api/payments/check':
         if not STATE['demo']:payment_store().reconcile(issue_payment)
         return route('/api/payments/list',{})
@@ -534,3 +534,4 @@ def main():
     finally: server.server_close()
 
 if __name__=='__main__': main()
+

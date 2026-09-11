@@ -152,7 +152,7 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways
 python3 -m py_compile core.py server.py expiry.py templates.py
 node --check web/app.js
 ```
@@ -186,6 +186,7 @@ The owner dashboard presents tickets in a compact table with a bounded scroll ar
 
 ## Payments and application backups
 
-Create Paystack checkout links using saved NGN profile prices. The running backend verifies successful payments and automatically issues one voucher per order for the connected location. Retrieve issued tickets from Saved vouchers; SMS/email delivery and a public captive-portal shop are not included. Configure `PAYSTACK_SECRET_KEY` on the backend and start in test mode. See [PAYMENTS.md](PAYMENTS.md) for setup, payment state, interruption handling and live-testing requirements.
+Create Paystack, Monnify or Flutterwave checkout links using saved NGN profile prices. The running backend verifies successful payments and automatically issues one voucher per order for the connected location. Retrieve issued tickets from Saved vouchers; SMS/email delivery and a public captive-portal shop are not included. Select a provider and configure its backend credentials as documented in PAYMENTS.md; start in test/sandbox mode. See [PAYMENTS.md](PAYMENTS.md) for setup, payment state, interruption handling and live-testing requirements.
 
 Download and restore profile prices, templates, voucher archives and saved location settings from Connection guide. Restores preview replacements and save a recovery copy first. Backup files contain voucher passwords; payment orders and secrets are excluded. See [BACKUPS.md](BACKUPS.md).
+

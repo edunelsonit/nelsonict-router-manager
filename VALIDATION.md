@@ -1,6 +1,6 @@
 # Validation record
 
-- 118 Python unit and local HTTP integration tests passed.
+- 125 Python unit and local HTTP integration tests passed.
 - Python compilation checks passed.
 - Frontend JavaScript syntax check passed.
 - HTTP tests exercised demo connect, plan, apply, voucher creation, user disable, rollback, disconnect, and rejection without an access token or Origin header.
@@ -8,7 +8,7 @@
 - No real RouterOS device was accessible. No RouterOS 7.24.2 certification is claimed.
 - Windows/macOS execution is unverified. Previous remote CI attempts failed before test steps started; local results are independent of GitHub Actions.
 
-Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business` from the project root. See ACCEPTANCE.md for the hardware release gate.
+Run `python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways` from the project root. See ACCEPTANCE.md for the hardware release gate.
 
 ## v0.2 scope
 
@@ -45,3 +45,8 @@ Five added tests cover password-free persistence, rename/removal, connection val
 ## Payments and backups
 
 Twelve tests cover mocked provider verification and duplicate prevention, mismatches, pending/network failures, uncertain issuance, initialization intent, backup roundtrip/recovery, invalid paths/data, write rollback and payment-ledger exclusion. All 118 local tests passed, including end-to-end application routes for a mocked paid order, archived price snapshot and restore connection guards. No real Paystack transaction, hardware payment issuance, browser visual pass or power-loss restore test is claimed.
+
+
+## Additional payment providers
+
+Seven mocked tests cover Flutterwave/Monnify initialization, verification and amount conversion, sandbox authentication, transaction references, invalid URLs/modes, merchant-key changes and duplicate prevention. All 125 local tests passed. Provider sandbox, live transactions and real-router issuance remain unverified.
