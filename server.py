@@ -23,6 +23,7 @@ LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
 import backups
+import diagnostics,llm_review
 from sales import SalesDB, scope_key
 from payments import Orders
 from locations import LocationStore
@@ -214,6 +215,14 @@ def payment_worker():
                 except Exception:pass
 
 def route(path,data,paid_order=None):
+    if path=='/api/diagnostics/import':return diagnostics.import_file(data.get('text'),data.get('kind'))
+    if path=='/api/diagnostics/ai':
+        if data.get('share') is not True:raise ValidationError('Review the projected data and confirm sending it to OpenAI.')
+        review=STATE.get('diagnostic_review') if data.get('review_id') else None
+        if data.get('review_id') and (not review or review['id']!=data['review_id']):raise ValidationError('Collect a fresh diagnostic snapshot.')
+        if not review:
+            review=diagnostics.import_file(data.get('text'),data.get('kind'))
+        return llm_review.review(diagnostics.ai_payload(review))
     if path=='/api/backup/export':return backups.export(DATA)
     if path=='/api/backup/preview':
         bundle=backups.validate(data.get('backup'));current=backups.export(DATA)
@@ -231,6 +240,8 @@ def route(path,data,paid_order=None):
     if path=='/api/templates/save':return {'template':TemplateStore(DATA/'templates').save(data.get('template'))}
     if path=='/api/templates/render':return {'html':print_html(data.get('template'),data.get('vouchers'),bool(data.get('demo',False)))}
     if path=='/api/templates/export':return portal_package(data.get('template'))
+    if path in ('/api/connect','/api/demo','/api/disconnect'):
+        STATE.pop('diagnostic_review',None);STATE.pop('comment_review',None)
     if path=='/api/connect':
         location=LocationStore(DATA/'locations').get(data['location_id']) if data.get('location_id') else None
         if location:data={**location,'password':data.get('password','')}
@@ -250,6 +261,31 @@ def route(path,data,paid_order=None):
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
+    if path=='/api/diagnostics/collect':
+        review=diagnostics.inspect(r,data.get('profile',''),data.get('batch',''))
+        review.update(id=secrets.token_urlsafe(24),context={k:STATE.get(k) for k in ('host','identity','location_id','demo')})
+        STATE['diagnostic_review']=review
+        return {**review,'ai_payload':diagnostics.ai_payload(review)}
+    if path=='/api/diagnostics/comments':
+        fixes=diagnostics.comment_plan(r,data.get('ids'),data.get('comment'))
+        review={'id':secrets.token_urlsafe(24),'observed_at':time.time(),'fixes':fixes,'context':{k:STATE.get(k) for k in ('host','identity','location_id','demo')}}
+        STATE['comment_review']=review;return review
+    if path=='/api/diagnostics/apply':
+        source='comment_review' if data.get('comments') else 'diagnostic_review';review=STATE.get(source)
+        if not review or review['id']!=data.get('review_id') or time.time()-review['observed_at']>600:raise ValidationError('Repair review expired. Collect a fresh preview.')
+        if data.get('confirmation')!='APPLY FIXES' or data.get('backup') is not True:raise ValidationError('Confirm a router backup and type APPLY FIXES.')
+        if any(review['context'][k]!=STATE.get(k) for k in review['context']):raise ValidationError('Router location changed. Start again.')
+        ids=data.get('fix_ids')
+        if not isinstance(ids,list) or not ids or len(ids)!=len(set(ids)):raise ValidationError('Select one or more distinct reviewed fixes.')
+        fixes={f['id']:f for f in review['fixes']}
+        if not set(ids)<=set(fixes):raise ValidationError('Unsupported or unreviewed fix requested.')
+        chosen=[fixes[i] for i in ids]
+        if source=='diagnostic_review':
+            fresh=diagnostics.inspect(r,**review['filters']);available={f['id']:f for f in fresh['fixes']}
+            if any(available.get(f['id'])!=f for f in chosen):raise ValidationError('Configuration or ticket state changed. Review a fresh plan.')
+        STATE.pop(source,None)
+        journal=new_journal('diagnostic-repair');diagnostics.apply_fixes(r,chosen,journal)
+        return {'ok':True,'journal':journal['id'],'count':len(chosen),'notice':'Run checks again to verify the remaining issues. Session/cookie cleanup cannot be undone.'}
     if path in ('/api/sales/report','/api/sales/sell','/api/sales/unsell'):
         db=sales_database()
         try:
@@ -485,6 +521,7 @@ def route(path,data,paid_order=None):
                 r.call('ip/hotspot/profile/'+quote(entry['id'],safe=''),'PATCH',{'html-directory':entry['before']})
                 entry['state']='rolled-back';journal['save']()
             return {'ok':True,'uncertain':0}
+        if journal['kind']=='diagnostic-repair':raise ValidationError('Repair records contain before/after values for manual recovery; automatic rollback could revive expired tickets or remove corrected metadata.')
         if journal['kind']=='ticket-action':raise ValidationError('Ticket actions have no automatic rollback. Use the explicit enable/disable controls.')
         if journal['kind']=='expiry-engine' and any(str(x.get('comment','')).startswith('ns2,') for x in r.call('ip/hotspot/user')):
             raise ValidationError('Managed tickets still depend on the expiry engine. Do not remove it while those tickets exist.')
@@ -508,9 +545,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
         if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
-        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/sales.js':'sales.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
+        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/sales.js':'sales.js','/diagnostics.js':'diagnostics.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
-        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','sales.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
+        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','sales.js':'text/javascript; charset=utf-8','diagnostics.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
         if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):
@@ -518,7 +555,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.headers.get('Content-Type')!='application/json': raise ValidationError('JSON required.')
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<(backups.LIMIT*2 if self.path in ('/api/backup/preview','/api/backup/restore') else 131072): raise ValidationError('Request size invalid.')
+            if not 0<length<(backups.LIMIT*2 if self.path in ('/api/backup/preview','/api/backup/restore') else 524288 if self.path in ('/api/diagnostics/import','/api/diagnostics/ai') else 131072): raise ValidationError('Request size invalid.')
             data=json.loads(self.rfile.read(length))
             if not isinstance(data,dict): raise ValidationError('JSON object required.')
             with LOCK: result=route(self.path,data)

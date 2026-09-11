@@ -14,8 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways test_sales
-      - run: python -m py_compile core.py server.py expiry.py templates.py api_transport.py portal_install.py pricing.py voucher_history.py locations.py payments.py backups.py gateways.py sales.py
+      - run: python -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways test_sales test_diagnostics
+      - run: python -m py_compile core.py server.py expiry.py templates.py api_transport.py portal_install.py pricing.py voucher_history.py locations.py payments.py backups.py gateways.py sales.py diagnostics.py llm_review.py
   javascript:
     runs-on: ubuntu-latest
     steps:
@@ -29,3 +29,4 @@ jobs:
       - run: node --check web/business.js
       - run: node --check web/sales.js
 
+      - run: node --check web/diagnostics.js

@@ -29,6 +29,12 @@ By default the app listens at **127.0.0.1:8765 only**. Optional HTTPS LAN/VPN mo
 
 Click **Open demonstration** to explore without touching any router. All demonstration records are simulated and disappear when you stop or reset that mode.
 
+## AI setup walkthrough
+
+Open **AI walkthrough** to collect and download a setup snapshot, inspect an imported `.rsc`/JSON export, and preview supported bulk ticket repairs. Optional OpenAI analysis requires backend environment variables `OPENAI_API_KEY` and `OPENAI_MODEL`, plus explicit confirmation before sharing the projected evidence. Local checks and repairs work without AI.
+
+Review and apply fixes for valid expiry comments, uptime limits, expired sessions and verified app-owned expiry automation. Select legacy tickets to preview and replace ordinary comments; managed expiry metadata stays protected. Missing activation dates require manual review. See [DIAGNOSTICS.md](DIAGNOSTICS.md) for configuration, supported repairs and limitations.
+
 ## Why this stack
 
 - **Python backend:** cross-platform networking, certificate verification, input validation and operation journaling, with no installation dependency chain.
@@ -152,8 +158,8 @@ Local journals live in `data/`, with restrictive POSIX modes where supported. Th
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways test_sales
-python3 -m py_compile core.py server.py expiry.py templates.py
+python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways test_sales test_diagnostics
+python3 -m py_compile core.py server.py expiry.py templates.py diagnostics.py llm_review.py
 node --check web/app.js
 ```
 

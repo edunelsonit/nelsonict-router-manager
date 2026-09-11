@@ -99,3 +99,15 @@ All routes require the owner token and an active location/router context.
 - `/api/sales/unsell`: `id`, `confirmation: CORRECT`. Marks a cash sale void while retaining its audit row. It cannot refund or reverse provider payments.
 
 Reports index confirmed archives and issued live payment orders idempotently. SQLite schema version 1 stores metadata and sales only; payment processing remains in the existing order store. Backups include the sales ledger as structured JSON.
+
+## AI walkthrough
+
+All routes retain owner authentication and Origin checks. Import and AI requests have a 512 KB request limit.
+
+- `POST /api/diagnostics/collect`: optional `profile` and `batch`. Requires an active router; returns local findings, projected evidence, tickets, supported fixes and a review ID.
+- `POST /api/diagnostics/import`: `kind` (rsc/json) and `text` (up to 256 KB). Returns a read-only projection; never executes file contents.
+- `POST /api/diagnostics/ai`: `share: true` and either live `review_id` or imported `kind`/`text`. Returns summary, findings and supported fix IDs. Backend OpenAI credentials/model are required.
+- `POST /api/diagnostics/comments`: selected ticket `ids` and replacement `comment`. Returns a review ID and exact changes. Rejects managed metadata replacement.
+- `POST /api/diagnostics/apply`: `review_id`, distinct `fix_ids`, `backup: true`, `confirmation: APPLY FIXES`, plus `comments: true` for a comment preview. Requires the same active location, an unconsumed review less than ten minutes old and unchanged target fields. Returns repair count and journal.
+
+See DIAGNOSTICS.md for supported repairs, sharing scope and manual recovery.
