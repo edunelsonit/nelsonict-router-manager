@@ -17,7 +17,8 @@ from expiry import (encode, decode, policy_from_form, describe_user, router_cloc
 from core import Router, ValidationError, snapshot, digest, build_plan, voucher_operations, execute, rollback
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / 'data'
+from app_paths import data_directory
+DATA = data_directory(ROOT)
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}

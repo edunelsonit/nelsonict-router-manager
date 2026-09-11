@@ -4,7 +4,7 @@ const token = new URLSearchParams(location.hash.slice(1)).get('token') || sessio
 if(token) sessionStorage.setItem('ns-launch',token);
 history.replaceState(null,'',location.pathname);
 let router = null, plan = null, batch = [], busy = false, currentView='connect';
-const titles = {diagnostics:'AI setup walkthrough',sales:'Sales reports',connect:'Connect your router',templates:'Voucher template editor',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
+const titles = {packages:'Desktop packages',diagnostics:'AI setup walkthrough',sales:'Sales reports',connect:'Connect your router',templates:'Voucher template editor',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function feedback(message,error=false){const el=$('#feedback');el.textContent=message;el.classList.toggle('error',error);el.hidden=false;}
 async function api(path,data={}){

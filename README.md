@@ -35,6 +35,10 @@ Open **AI walkthrough** to collect and download a setup snapshot, inspect an imp
 
 Review and apply fixes for valid expiry comments, uptime limits, expired sessions and verified app-owned expiry automation. Select legacy tickets to preview and replace ordinary comments; managed expiry metadata stays protected. Missing activation dates require manual review. See [DIAGNOSTICS.md](DIAGNOSTICS.md) for configuration, supported repairs and limitations.
 
+## Desktop packages
+
+Open **Desktop packages** in the app for EXE/DEB build options. See [PACKAGING.md](PACKAGING.md) for local builds, GitHub artifacts and data migration.
+
 ## Why this stack
 
 - **Python backend:** cross-platform networking, certificate verification, input validation and operation journaling, with no installation dependency chain.

@@ -1,0 +1,38 @@
+name: Build desktop packages
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r packaging/requirements-windows.txt
+      - run: python -m unittest discover -q
+      - run: python packaging/build.py exe
+      - run: dist/NelsonictRouterManager.exe --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nelsonict-Windows
+          path: dist/*.exe
+          if-no-files-found: error
+  debian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -q
+      - run: python packaging/build.py deb
+      - run: sudo apt-get install -y ./dist/*.deb
+      - run: nelsonict-router-manager --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nelsonict-Debian
+          path: dist/*.deb
+          if-no-files-found: error

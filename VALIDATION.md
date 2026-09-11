@@ -60,3 +60,7 @@ Ten added tests cover sold/unsold transitions, duplicate protection, retained co
 Thirteen new tests cover credential/comment/script projection, partial RSC import, metadata preservation, expired ticket disabling and session cleanup, withheld repairs for missing activation metadata, damaged-policy review, stale/replayed plans, protected comments, location changes, scheduler ownership and unchanged script detection, sharing/key guards, and mocked Responses structured output with unsupported fix rejection. All 148 Python tests passed locally. All browser JavaScript files passed syntax checks, and the modified backend modules compiled.
 
 No real RouterOS, live OpenAI response, browser interaction or automatic recovery acceptance is claimed. AI suggestions remain advisory; only server-generated reviewed fixes are executable.
+
+## Desktop packaging and frontend
+
+All 148 Python tests and frontend JavaScript syntax checks passed. The DEB built and extracted successfully; its bundled server entrypoint passed --help, web assets were present and owner data was excluded. Frozen data-path checks passed. Navigation targets and unique HTML IDs were checked. Windows EXE build/launch, installed desktop launch and browser visual acceptance remain unverified. A manual GitHub workflow builds and uploads both package types.
