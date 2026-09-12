@@ -4,9 +4,24 @@ A local MikroTik management application for **Nelsonict Services Limited**: conn
 
 **Version 0.4.0 — pilot, not a production-certified release.** Targets RouterOS v7 API and REST services. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
 
-## Run it
+## Features at a glance
 
-Requires **Python 3.11 or newer** and a current desktop browser. No pip or npm packages are required to run the app.
+| Area | Available now |
+|---|---|
+| Router connections | API/API-SSL and HTTP/HTTPS REST over LAN/VPN; multiple saved locations, one active router |
+| Setup | Reviewed additive plans for existing hotspots, new paid hotspots and office internet |
+| Vouchers | PIN-only or username/password tickets, five expiry policies, profile prices and saved batch/profile printing |
+| Owner dashboard | Connected sessions, tracked first login, expiry status, compact tables, filters and account actions |
+| Templates | Printable voucher customization and direct captive-portal installation |
+| AI walkthrough | Setup snapshots, imported export review, optional AI suggestions and reviewed bulk repairs |
+| Payments | Paystack, Monnify and Flutterwave checkout with backend verification and voucher issuance |
+| Sales | SQLite inventory, sold/unsold tracking and daily/monthly totals by profile |
+| Backups | Preview and restore application metadata, voucher archives and sales records |
+| Distribution | Windows EXE and Debian DEB build scripts; manual GitHub package workflow |
+
+## Run from source
+
+Requires **Python 3.11 or newer** and a current desktop browser. No pip or npm packages are required to run from source. The Windows EXE bundles Python; building it requires PyInstaller. The DEB uses system Python.
 
 ### Windows
 
@@ -37,7 +52,33 @@ Review and apply fixes for valid expiry comments, uptime limits, expired session
 
 ## Desktop packages
 
-Open **Desktop packages** in the app for EXE/DEB build options. See [PACKAGING.md](PACKAGING.md) for local builds, GitHub artifacts and data migration.
+Open **Desktop packages** in the app for build options, or use the commands below from the downloaded source folder.
+
+| Target | Build command | Output | Runtime requirement |
+|---|---|---|---|
+| Windows | `build-windows.bat` on Windows | `dist/NelsonictRouterManager.exe` | Browser; Python is bundled |
+| Debian / Ubuntu | `sh build-deb.sh` with Python 3.11+ and dpkg-dev | `dist/nelsonict-router-manager_0.4.0_all.deb` | Browser and system Python 3.11+ |
+
+Install and launch the Debian package:
+
+```sh
+sudo apt install ./dist/nelsonict-router-manager_0.4.0_all.deb
+nelsonict-router-manager
+```
+
+Alternatively, open [Build desktop packages](https://github.com/edunelsonit/nelsonict-router-manager/actions/workflows/packages.yml), select **Run workflow**, and download the Windows or Debian artifact after its job succeeds. Extract the downloaded artifact ZIP. Workflow permission is required; these are generated artifacts, not prepublished release downloads.
+
+The EXE is an unsigned portable application, not a Windows installation wizard. Both packages use the same browser interface and require the backend to remain running. The DEB includes an applications-menu launcher. See [PACKAGING.md](PACKAGING.md) for build dependencies and migration.
+
+### Where owner data is stored
+
+| Installation | Default data directory |
+|---|---|
+| Source checkout | `data/` beside `server.py` |
+| Windows EXE | `%LOCALAPPDATA%/nelsonict-router-manager` |
+| DEB | `~/.local/share/nelsonict-router-manager`, or `$XDG_DATA_HOME/nelsonict-router-manager` |
+
+Set `NELSONICT_DATA_DIR` to override the location. References to `data/` below mean this active data directory. Packaged data stays outside the application files and EXE extraction folder. Before migrating, stop the backend and copy its complete data folder to the new location; do not run two backends against the same folder. A stopped full-folder backup retains payment orders that application JSON backups exclude.
 
 ## Why this stack
 
@@ -133,6 +174,10 @@ The phone must have a network route to the MikroTik management address. A guest 
 
 References: [Flutter platform support](https://flutter.dev/development), [iOS build and release requirements](https://docs.flutter.dev/deployment/ios), and [Apple local-network privacy guidance](https://developer.apple.com/videos/play/wwdc2020/10110/).
 
+## Profile prices
+
+Save a price and currency for each hotspot user profile in **Vouchers & users**. Newly generated voucher archives retain their price snapshot for printing and sales tracking. Updating a profile price does not rewrite previously archived ticket prices. Payment checkout uses saved NGN profile prices; printing a price does not itself mark a voucher sold.
+
 ## Vouchers and configurable expiry
 
 1. Open Vouchers & users and review/install the router expiry checker with NTP synchronized.
@@ -144,7 +189,48 @@ References: [Flutter platform support](https://flutter.dev/development), [iOS bu
 
 The scheduler and activation record live on the router so enforcement does not depend on the management app staying open. **Native scripts still require real-router acceptance testing.** The checker runs every 30 seconds; this is not a second-exact cutoff guarantee. Location scheduling uses an explicit fixed UTC offset (Nigeria +60 minutes), without automatic daylight-saving changes. See [EXPIRY.md](EXPIRY.md) for exact policies and clock/power-loss behavior.
 
+### If expiry installation asks for NTP synchronization
+
+The installer requires verified router time. Enable the router's NTP client, configure reachable time servers, and wait for its status to show **synchronized** before retrying. A manually entered clock alone does not satisfy the check. For Nigeria, use the appropriate local timezone and +60-minute policy offset.
+
+If the message persists, inspect these read-only terminal results:
+
+```routeros
+/system ntp client print
+/system ntp client servers print detail
+/system clock print
+```
+
+Check router Internet/DNS access and whether the application account can read those menus. See [EXPIRY.md](EXPIRY.md) for clock handling. The current AI walkthrough does not automatically configure NTP.
+
 Legacy API callers that omit `expiry_mode` retain connected-time-only behavior. Historical first-login timestamps cannot be recovered for older accounts. No automatic migration guesses those dates. Do not manually edit managed `ns2,` comments.
+
+## Saved voucher reprinting
+
+Use Vouchers & users → Saved vouchers to preview and print by batch or profile, 100 tickets per page. New batch credentials and prices persist in private local `data/vouchers` files; protect and back up this directory. Recover older router batches when passwords and Nelsonict batch markers are available. See TEMPLATES.md for recovery limits.
+
+## Account table filters and sorting
+
+In Hotspot accounts, search usernames, profiles or status; combine profile and Online/Offline/Disabled filters. Click User, Profile, Used, Allowance or Status headings to toggle ascending/descending order. Durations sort numerically and unlimited allowance sorts above finite limits. The displayed count reflects all active filters. Refresh retains filters and sorting; Reset filters & sort restores all accounts ordered by username.
+
+The owner dashboard presents tickets in a compact table with a bounded scroll area, sticky column headings and action buttons pinned at the right edge. Search/status filters and automatic refresh remain available. Expired-but-connected tickets are highlighted.
+
+## Payments and application backups
+
+Create Paystack, Monnify or Flutterwave checkout links using saved NGN profile prices. The running backend verifies successful payments and automatically issues one voucher per order for the connected location. Retrieve issued tickets from Saved vouchers; SMS/email delivery and a public captive-portal shop are not included. Select a provider and configure its backend credentials as documented in PAYMENTS.md; start in test/sandbox mode. See [PAYMENTS.md](PAYMENTS.md) for setup, payment state, interruption handling and live-testing requirements.
+
+Download and restore profile prices, templates, voucher archives, SQLite sales records and saved location settings from Connection guide. Restores preview replacements and save a recovery copy first. Backup files contain voucher passwords; payment orders and secrets are excluded. See [BACKUPS.md](BACKUPS.md).
+
+
+## SQLite sales ledger and daily/monthly reports
+
+Open **Sales reports** after connecting to a location. Filter the date range and profile, select Daily or Monthly, and set the UTC offset (Nigeria: +60 minutes). Totals group by profile and currency; Export report CSV downloads the displayed totals. Values are gross recorded sales, before gateway fees/refunds, not profit or provider settlement balances.
+
+The inventory lists confirmed archived vouchers as sold, unsold, payment pending/review or test. Filter by profile, batch, username and status. Record cash sales at the actual amount received, or correct a mistaken cash entry back to unsold with an audit record. Unsold means no recorded sale; old cash sales are not guessed from ticket use. Expiry and account access remain separate from sale status.
+
+Verified, issued live-provider orders are indexed automatically when sales reports load. Test payments and paid-but-unissued/review orders do not count as sales. Each voucher has at most one active sale. New online sales use issuance time; older orders without that timestamp fall back to verification/order-creation time and may need historical reconciliation.
+
+Python's built-in SQLite stores inventory metadata and sale/correction records in `data/sales.sqlite3`, with schema versioning, indexes and transactional writes. Money uses integer minor units. This database contains no voucher or router passwords. Existing templates, credentials, payment orders and router settings retain their established stores; no wholesale migration is required. SQLite data is included in the application backup/restore tool. See [SALES.md](SALES.md).
 
 ## Plan, apply and recovery
 
@@ -157,17 +243,24 @@ Legacy API callers that omit `expiry_mode` retain connected-time-only behavior. 
 - Rollback is **not a transaction or RouterOS Safe Mode**. It cannot reverse uncertain writes, all side effects, arbitrary later modifications or a lost management connection. Inspect uncertain writes manually using their recorded menu and properties. On router reset/replacement, do not reuse old change records.
 - Setup rollback can disconnect users. Rolling back a voucher batch deletes those users. Do not rollback a populated hotspot profile until dependent vouchers have been dealt with.
 
-Local journals live in `data/`, with restrictive POSIX modes where supported. They contain router addresses and voucher identifiers (which are also PINs), so treat them as secrets. Windows users should keep the project in a private user folder with appropriate ACLs. `data/`, exports, backups, private keys and launch/runtime state are excluded from Git. The app only serves three fixed frontend assets; journals are never exposed as static files.
+Local journals live in `data/`, with restrictive POSIX modes where supported. They contain router addresses and voucher identifiers (which are also PINs), so treat them as secrets. Windows users should keep the project in a private user folder with appropriate ACLs. `data/`, exports, backups, private keys and launch/runtime state are excluded from Git. The app serves an explicit allowlist of frontend assets; journals are never exposed as static files.
 
 ## Development and verification
 
 ```sh
-python3 -m unittest -v test_core test_http test_expiry test_mobile test_templates test_lan test_pricing test_voucher_history test_locations test_business test_gateways test_sales test_diagnostics
-python3 -m py_compile core.py server.py expiry.py templates.py diagnostics.py llm_review.py
+python3 -m unittest discover -v
+python3 -m py_compile core.py server.py expiry.py templates.py diagnostics.py llm_review.py app_paths.py packaging/build.py
 node --check web/app.js
+node --check web/diagnostics.js
+node --check web/business.js
+node --check web/sales.js
+node --check web/templates.js
+node --check web/table-utils.js
 ```
 
 Node is optional and only needed for the JavaScript syntax check. GitHub Actions includes Python checks on Ubuntu and Windows. A successful simulation test does not establish MikroTik compatibility.
+
+**Last recorded local checks:** 148 Python tests passed, frontend syntax and navigation checks passed, and the DEB built, extracted and passed an entrypoint smoke check. Windows EXE build/launch, installed desktop launch, browser visual checks, real-router expiry and live AI/payment acceptance remain unverified. These are recorded local results, not a claim that GitHub CI or hardware certification passed. See [VALIDATION.md](VALIDATION.md).
 
 See [ACCEPTANCE.md](ACCEPTANCE.md) for real-router release gates and [ROADMAP.md](ROADMAP.md) for the broader product plan.
 
@@ -184,29 +277,19 @@ The supplied `Mikhmon Server.zip` was inspected as a feature reference. Its `inc
 
 The linked legacy documentation warns that it is frozen; MikroTik directs readers to its [current manual](https://manual.mikrotik.com/docs/introduction/). Confirm behavior on the exact deployed version before business use.
 
-## Saved voucher reprinting
 
-Use Vouchers & users → Saved vouchers to preview and print by batch or profile, 100 tickets per page. New batch credentials and prices persist in private local `data/vouchers` files; protect and back up this directory. Recover older router batches when passwords and Nelsonict batch markers are available. See TEMPLATES.md for recovery limits.
+## Documentation
 
-## Account table filters and sorting
-
-In Hotspot accounts, search usernames, profiles or status; combine profile and Online/Offline/Disabled filters. Click User, Profile, Used, Allowance or Status headings to toggle ascending/descending order. Durations sort numerically and unlimited allowance sorts above finite limits. The displayed count reflects all active filters. Refresh retains filters and sorting; Reset filters & sort restores all accounts ordered by username.
-
-The owner dashboard presents tickets in a compact table with a bounded scroll area, sticky column headings and action buttons pinned at the right edge. Search/status filters and automatic refresh remain available. Expired-but-connected tickets are highlighted.
-
-## Payments and application backups
-
-Create Paystack, Monnify or Flutterwave checkout links using saved NGN profile prices. The running backend verifies successful payments and automatically issues one voucher per order for the connected location. Retrieve issued tickets from Saved vouchers; SMS/email delivery and a public captive-portal shop are not included. Select a provider and configure its backend credentials as documented in PAYMENTS.md; start in test/sandbox mode. See [PAYMENTS.md](PAYMENTS.md) for setup, payment state, interruption handling and live-testing requirements.
-
-Download and restore profile prices, templates, voucher archives and saved location settings from Connection guide. Restores preview replacements and save a recovery copy first. Backup files contain voucher passwords; payment orders and secrets are excluded. See [BACKUPS.md](BACKUPS.md).
-
-
-## SQLite sales ledger and daily/monthly reports
-
-Open **Sales reports** after connecting to a location. Filter the date range and profile, select Daily or Monthly, and set the UTC offset (Nigeria: +60 minutes). Totals group by profile and currency; Export report CSV downloads the displayed totals. Values are gross recorded sales, before gateway fees/refunds, not profit or provider settlement balances.
-
-The inventory lists confirmed archived vouchers as sold, unsold, payment pending/review or test. Filter by profile, batch, username and status. Record cash sales at the actual amount received, or correct a mistaken cash entry back to unsold with an audit record. Unsold means no recorded sale; old cash sales are not guessed from ticket use. Expiry and account access remain separate from sale status.
-
-Verified, issued live-provider orders are indexed automatically when sales reports load. Test payments and paid-but-unissued/review orders do not count as sales. Each voucher has at most one active sale. New online sales use issuance time; older orders without that timestamp fall back to verification/order-creation time and may need historical reconciliation.
-
-Python's built-in SQLite stores inventory metadata and sale/correction records in `data/sales.sqlite3`, with schema versioning, indexes and transactional writes. Money uses integer minor units. This database contains no voucher or router passwords. Existing templates, credentials, payment orders and router settings retain their established stores; no wholesale migration is required. SQLite data is included in the application backup/restore tool. See [SALES.md](SALES.md).
+| Guide | Details |
+|---|---|
+| [Packaging](PACKAGING.md) | EXE/DEB builds, artifacts and data migration |
+| [Expiry](EXPIRY.md) | Ticket policies, activation records and clock behavior |
+| [Templates](TEMPLATES.md) | Ticket printing, saved batches and portal installation |
+| [AI walkthrough](DIAGNOSTICS.md) | Evidence sharing, supported repairs and comments |
+| [Payments](PAYMENTS.md) | Provider credentials and payment verification |
+| [Sales](SALES.md) | Inventory, cash entries and SQLite reports |
+| [Backups](BACKUPS.md) | Backup scope and recovery |
+| [Mobile access](MOBILE.md) | HTTPS browser access from phones |
+| [API](API.md) | Owner application endpoints |
+| [Validation](VALIDATION.md) / [Acceptance](ACCEPTANCE.md) | Completed checks and outstanding release gates |
+| [Roadmap](ROADMAP.md) | Planned work |
