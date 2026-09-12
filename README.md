@@ -89,6 +89,12 @@ Set `NELSONICT_DATA_DIR` to override the location. References to `data/` below m
 
 This is a desktop-hosted, single-owner application with a mobile web interface. Owners can access it through optional HTTPS on a trusted LAN or VPN. It is not a native Android/iOS app or multi-tenant SaaS. All authorized owner devices share one active router connection.
 
+## Remote control and User Manager
+
+Use **Remote control** to select a reachable remote router and encrypted API-SSL/HTTPS service, then connect and save the location. A management VPN or configured inbound path is required. The app does not automatically create a tunnel.
+
+Use **User Manager** for RouterOS v7 RADIUS service settings, router clients, profiles, limitations, user/group management and profile assignments. Review every change, configure the hotspot RADIUS client and accounting, and inspect session records. The matching user-manager package must already be installed. These accounts remain separate from local-hotspot vouchers and payment issuance. See [USER_MANAGER.md](USER_MANAGER.md) for the full setup sequence and unsupported operations.
+
 ## Saved hotspot locations
 
 Open **Connect your router → Saved hotspot locations**. Enter a location name and the router IP, username, service, port and optional certificate fingerprint, then click **Save connection settings**. Select a saved location, enter its password and click **Connect & inspect**. Use New location for another site; update its display name with Save, or remove a disconnected saved location.
@@ -260,7 +266,7 @@ node --check web/table-utils.js
 
 Node is optional and only needed for the JavaScript syntax check. GitHub Actions includes Python checks on Ubuntu and Windows. A successful simulation test does not establish MikroTik compatibility.
 
-**Last recorded local checks:** 148 Python tests passed, frontend syntax and navigation checks passed, and the DEB built, extracted and passed an entrypoint smoke check. Windows EXE build/launch, installed desktop launch, browser visual checks, real-router expiry and live AI/payment acceptance remain unverified. These are recorded local results, not a claim that GitHub CI or hardware certification passed. See [VALIDATION.md](VALIDATION.md).
+**Last recorded local checks:** 156 Python tests passed, frontend syntax and navigation checks passed, and the DEB built, extracted and passed an entrypoint smoke check. Windows EXE build/launch, installed desktop launch, browser visual checks, real-router expiry and live AI/payment acceptance remain unverified. These are recorded local results, not a claim that GitHub CI or hardware certification passed. See [VALIDATION.md](VALIDATION.md).
 
 See [ACCEPTANCE.md](ACCEPTANCE.md) for real-router release gates and [ROADMAP.md](ROADMAP.md) for the broader product plan.
 

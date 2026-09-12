@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ['server', 'core', 'expiry', 'templates', 'api_transport', 'portal_install',
            'pricing', 'voucher_history', 'locations', 'payments', 'backups',
-           'gateways', 'sales', 'diagnostics', 'llm_review', 'app_paths']
+           'gateways', 'sales', 'diagnostics', 'llm_review', 'app_paths', 'user_manager']
 NAME = 'nelsonict-router-manager'
 VERSION = '0.4.0'
 

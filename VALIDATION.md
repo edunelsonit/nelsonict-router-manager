@@ -64,3 +64,7 @@ No real RouterOS, live OpenAI response, browser interaction or automatic recover
 ## Desktop packaging and frontend
 
 All 148 Python tests and frontend JavaScript syntax checks passed. The DEB built and extracted successfully; its bundled server entrypoint passed --help, web assets were present and owner data was excluded. Frozen data-path checks passed. Navigation targets and unique HTML IDs were checked. Windows EXE build/launch, installed desktop launch and browser visual acceptance remain unverified. A manual GitHub workflow builds and uploads both package types.
+
+## Remote connection controls and User Manager
+
+Eight new tests cover the service/profile/limitation/user assignment sequence, redacted secrets, invalid menus and references, stale/replayed plans, connection changes and confirmation, update/delete settings, uncertain writes and encrypted-only public management. All 156 tests passed; JavaScript syntax, navigation/control references and the updated DEB build passed. Real RouterOS package/service behavior, RADIUS login/accounting/disconnect, cross-site networking and browser visual acceptance remain outstanding.

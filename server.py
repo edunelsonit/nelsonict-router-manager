@@ -25,6 +25,7 @@ STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
 import backups
 import diagnostics,llm_review
+import user_manager
 from sales import SalesDB, scope_key
 from payments import Orders
 from locations import LocationStore
@@ -36,6 +37,10 @@ from portal_install import prepare as prepare_portal, deploy as deploy_portal
 class DemoRouter:
     def __init__(self):
         self.data = {p:[] for p in __import__('core').PATHS}
+        self.data.update({p:[] for p in list(user_manager.FIELDS)+user_manager.READONLY})
+        self.data['user-manager']=[{'enabled':'no','use-profiles':'no'}]
+        self.data['radius/incoming']=[{'accept':'no','port':'3799'}]
+        self.data['user-manager/user/group']=[{'.id':'*G','name':'default'}]
         self.data.update({
             'system/resource':[{'version':'7.x (simulated)','board-name':'Demo router','uptime':'3h12m','cpu-load':'8','free-memory':'134217728','total-memory':'268435456'}],
             'system/identity':[{'name':'Nelsonict • demonstration'}],
@@ -61,6 +66,8 @@ class DemoRouter:
                     self.counter+=1
                     self.data['file'].append({**row,'.id':f'*D{self.counter}','name':data['name']+row['name'][len(source):]})
             return {}
+        if method=='POST' and path in ('user-manager/set','radius/incoming/set'):
+            self.data[path.removesuffix('/set')][0].update(data);return {}
         if method=='POST' and path=='file/print':
             ident=data['.query'][0].split('=',1)[1]
             return copy.deepcopy([x for x in self.data['file'] if x.get('.id')==ident])
@@ -242,7 +249,7 @@ def route(path,data,paid_order=None):
     if path=='/api/templates/render':return {'html':print_html(data.get('template'),data.get('vouchers'),bool(data.get('demo',False)))}
     if path=='/api/templates/export':return portal_package(data.get('template'))
     if path in ('/api/connect','/api/demo','/api/disconnect'):
-        STATE.pop('diagnostic_review',None);STATE.pop('comment_review',None)
+        STATE.pop('um_plan',None);STATE.pop('diagnostic_review',None);STATE.pop('comment_review',None)
     if path=='/api/connect':
         location=LocationStore(DATA/'locations').get(data['location_id']) if data.get('location_id') else None
         if location:data={**location,'password':data.get('password','')}
@@ -262,6 +269,19 @@ def route(path,data,paid_order=None):
         return {'ok':True}
     r=active_router()
     if path=='/api/status': return public_status()
+    if path=='/api/user-manager/list':return user_manager.inventory(r)
+    if path=='/api/user-manager/preview':
+        plan=user_manager.prepare(r,data)
+        plan['context']={k:STATE.get(k) for k in ('host','identity','location_id','demo')}
+        STATE['um_plan']=plan
+        return user_manager.preview(plan)
+    if path=='/api/user-manager/apply':
+        plan=STATE.get('um_plan')
+        if not plan or plan['id']!=data.get('review_id'):raise ValidationError('Prepare a fresh User Manager review.')
+        if data.get('confirmation')!='APPLY USER MANAGER' or data.get('backup') is not True:raise ValidationError('Confirm backup and type APPLY USER MANAGER.')
+        if any(STATE.get(k)!=v for k,v in plan['context'].items()):raise ValidationError('Router changed. Prepare again.')
+        STATE.pop('um_plan',None)
+        return user_manager.apply(r,plan,new_journal('user-manager'))
     if path=='/api/diagnostics/collect':
         review=diagnostics.inspect(r,data.get('profile',''),data.get('batch',''))
         review.update(id=secrets.token_urlsafe(24),context={k:STATE.get(k) for k in ('host','identity','location_id','demo')})
@@ -522,7 +542,7 @@ def route(path,data,paid_order=None):
                 r.call('ip/hotspot/profile/'+quote(entry['id'],safe=''),'PATCH',{'html-directory':entry['before']})
                 entry['state']='rolled-back';journal['save']()
             return {'ok':True,'uncertain':0}
-        if journal['kind']=='diagnostic-repair':raise ValidationError('Repair records contain before/after values for manual recovery; automatic rollback could revive expired tickets or remove corrected metadata.')
+        if journal['kind'] in ('diagnostic-repair','user-manager'):raise ValidationError('Repair records contain before/after values for manual recovery; automatic rollback could revive expired tickets or remove corrected metadata.')
         if journal['kind']=='ticket-action':raise ValidationError('Ticket actions have no automatic rollback. Use the explicit enable/disable controls.')
         if journal['kind']=='expiry-engine' and any(str(x.get('comment','')).startswith('ns2,') for x in r.call('ip/hotspot/user')):
             raise ValidationError('Managed tickets still depend on the expiry engine. Do not remove it while those tickets exist.')
@@ -546,9 +566,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get('Host')==urlsplit(getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}')).netloc
     def do_GET(self):
         if not self.valid_host(): return self.send(403,{'error':'Use the exact private launch address.'})
-        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/sales.js':'sales.js','/diagnostics.js':'diagnostics.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
+        name={'/':'index.html','/app.js':'app.js','/table-utils.js':'table-utils.js','/business.js':'business.js','/sales.js':'sales.js','/diagnostics.js':'diagnostics.js','/user-manager.js':'user-manager.js','/style.css':'style.css','/templates.js':'templates.js'}.get(urlsplit(self.path).path)
         if not name: return self.send(404,{'error':'Not found'})
-        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','sales.js':'text/javascript; charset=utf-8','diagnostics.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
+        kind={'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','table-utils.js':'text/javascript; charset=utf-8','business.js':'text/javascript; charset=utf-8','sales.js':'text/javascript; charset=utf-8','diagnostics.js':'text/javascript; charset=utf-8','user-manager.js':'text/javascript; charset=utf-8','templates.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]
         self.send(200,(ROOT/'web'/name).read_bytes(),kind)
     def do_POST(self):
         if not self.valid_host() or self.headers.get('Origin')!=getattr(self.server,'app_origin',f'http://127.0.0.1:{self.server.server_port}') or not secrets.compare_digest(self.headers.get('X-App-Token',''),TOKEN):

@@ -111,3 +111,7 @@ All routes retain owner authentication and Origin checks. Import and AI requests
 - `POST /api/diagnostics/apply`: `review_id`, distinct `fix_ids`, `backup: true`, `confirmation: APPLY FIXES`, plus `comments: true` for a comment preview. Requires the same active location, an unconsumed review less than ten minutes old and unchanged target fields. Returns repair count and journal.
 
 See DIAGNOSTICS.md for supported repairs, sharing scope and manual recovery.
+
+## User Manager
+
+Owner-authenticated POST routes require an active router. `/api/user-manager/list` returns allowlisted configuration and read-only operational tables with secrets redacted. `/api/user-manager/preview` accepts an allowlisted `path`, `action` (create/update/delete), selected `id` for record mutations and a `values` object of string fields; returns an expiring review ID and redacted changes. `/api/user-manager/apply` accepts `review_id`, `backup: true` and `confirmation: APPLY USER MANAGER`. Plans are location-bound, checked against fresh configuration and consumed before writes. See USER_MANAGER.md for menu scope and recovery.
