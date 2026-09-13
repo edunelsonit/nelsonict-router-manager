@@ -72,3 +72,7 @@ Eight new tests cover the service/profile/limitation/user assignment sequence, r
 ## Four review regressions fixed
 
 Fourteen added Python tests cover midnight/reboot shortening, no revival/extension, exact legacy script upgrades, revoked inventory and preserved sales, old rollback migration, failed rollback quarantine, diagnostic roundtrip and malformed imports, slow AI and payment requests, connection switching, at-most-once issuance and the actual HTTP handler lock boundary. All 170 Python tests passed. The JavaScript VM regression confirms cloud calls leave owner controls usable and discard stale connection results. Browser syntax checks and the DEB build passed. Live-router/script and provider testing remain outstanding.
+
+## Cross-computer migration GUI
+
+The migration update passed 176 Python tests, JavaScript syntax checking for the changed business UI, the existing cloud-control regression and a new migration UI regression. Six new backend tests cover read-only/secret-free preview, saved-location scope preservation across an IP change, recovery copies, invalid settings, duplicate IDs, acknowledgment, connected restore refusal and legacy backups. The UI regression checks review gating and invalidation when settings change during a pending preview. CI includes both migration test files. Physical cross-computer migration, browser visual acceptance and actual router reconnects remain to be tested.

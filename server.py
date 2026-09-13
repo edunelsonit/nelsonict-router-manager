@@ -278,12 +278,17 @@ def _route(path,data,paid_order=None):
         return CloudTask(analyze)
     if path=='/api/backup/export':return backups.export(DATA)
     if path=='/api/backup/preview':
-        bundle=backups.validate(data.get('backup'));current=backups.export(DATA)
-        return {'files':len(bundle['files']),'replace':sum(n in current['files'] for n in bundle['files']),'groups':sorted({n.split('/')[0] for n in bundle['files']})}
+        bundle,locations,changes=backups.prepare(data.get('backup'),data.get('location_updates'));current=backups.export(DATA)
+        return {'files':len(bundle['files']),'replace':sum(n in current['files'] for n in bundle['files']),'groups':sorted({n.split('/')[0] for n in bundle['files']}),'locations':locations,'connection_changes':changes,
+                'destination':{'data_directory':str(DATA.resolve()),'configured':{name:bool(os.environ.get(name,'').strip()) for name in ('PAYSTACK_SECRET_KEY','MONNIFY_API_KEY','MONNIFY_SECRET_KEY','MONNIFY_CONTRACT_CODE','MONNIFY_REDIRECT_URL','FLUTTERWAVE_SECRET_KEY','FLUTTERWAVE_REDIRECT_URL','OPENAI_API_KEY','OPENAI_MODEL')}}}
     if path=='/api/backup/restore':
         if STATE.get('router'):raise ValidationError('Disconnect the router before restoring local data.')
         if data.get('confirmation')!='RESTORE':raise ValidationError('Review the backup preview and confirm RESTORE.')
-        return backups.restore(DATA,data.get('backup'))
+        bundle,locations,changes=backups.prepare(data.get('backup'),data.get('location_updates'))
+        if data.get('location_updates') and data.get('migration_ack') is not True:raise ValidationError('Confirm the old backend is stopped and these locations still refer to the original routers.')
+        result=backups.restore(DATA,bundle)
+        result.update(locations=locations,connection_changes=changes)
+        return result
     if path=='/api/locations/list':return {'locations':LocationStore(DATA/'locations').list()}
     if path=='/api/locations/save':return {'location':LocationStore(DATA/'locations').save(data)}
     if path=='/api/locations/delete':

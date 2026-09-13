@@ -336,6 +336,11 @@ Restarting the app changes the launch token, so reopen the new link on every own
 
 ## Upgrade and migration
 
+**Moving to another computer:** download the application backup on the old computer, stop its backend, and select the JSON under **Connection guide → Backup & restore application data** on the new computer. The **Move to another computer** GUI lets you edit saved router IPs, usernames, service/ports, display names and certificate fingerprints before reviewing and restoring. Location IDs stay intact; the original RouterOS identity must remain unchanged for the same scoped records to appear. Editing a field invalidates the restore preview.
+
+The wizard shows the destination data folder and whether payment/AI environment settings are present, without revealing secrets. Reconfigure required environment settings and phone HTTPS/network access separately on the new host. After restore, select the saved location and enter its password. See [BACKUPS.md](BACKUPS.md) for the full GUI walkthrough, manual-connection limitations and the separate transfer required for payment orders/journals. This does not restore a replacement MikroTik's configuration or accounts.
+
+
 1. Record the current application version and active data path. Resolve or record outstanding payment and uncertain-write cases before maintenance.
 2. Stop the backend. Copy its **entire data directory** to a private backup location, including payment orders and change journals. Preserve router configuration and User Manager database backups separately.
 3. Install the updated source or package. Keep the prior application and data backup available for recovery. For source updates, preserve the existing `data/` folder; when changing installation type, move the complete data folder to its new default path or point `NELSONICT_DATA_DIR` to it.
@@ -435,6 +440,7 @@ node --check web/templates.js
 node --check web/table-utils.js
 node --check web/user-manager.js
 node test_cloud_ui.js
+node test_migration_ui.js
 ```
 
 Node is optional for running the application and is used for JavaScript syntax and frontend concurrency checks during development. GitHub Actions includes Python checks on Ubuntu and Windows. A successful simulation test does not establish MikroTik compatibility.

@@ -1,5 +1,5 @@
 """Bounded JSON backups of application data; no router configuration writes."""
-import json, os, re, time
+import copy, json, os, re, time
 from pathlib import Path
 from core import ValidationError, Router
 from templates import validate_template
@@ -30,6 +30,37 @@ def validate(bundle):
                 for row in record['vouchers']:
                     if not isinstance(row,dict) or row.get('batch')!=key or any(not isinstance(row.get(k),str) or not 1<=len(row[k])<=128 for k in ('username','password','profile')) or (row.get('creation_state') not in ('pending','created','uncertain','not-created') or row.get('lifecycle','active') not in ('active','revoked')):raise ValidationError('Invalid archived voucher.')
     return bundle
+
+def prepare(bundle, updates=None):
+    """Review connection changes without remapping archive/sales scope or writing files."""
+    result=copy.deepcopy(validate(bundle))
+    rows={}
+    for path,records in result['files'].items():
+        if path.startswith('locations/'):
+            for ident,row in records.items():
+                if ident in rows:raise ValidationError('Duplicate saved location ID in backup.')
+                rows[ident]=row
+    if updates is None:updates=[]
+    if not isinstance(updates,list) or len(updates)>100:raise ValidationError('Provide at most 100 location updates.')
+    changes=[];seen=set()
+    fields={'name','host','username','transport','port','fingerprint'}
+    for update in updates:
+        if not isinstance(update,dict) or set(update)!=(fields|{'id'}):raise ValidationError('Invalid migration settings. Passwords are entered only when connecting.')
+        ident=update['id']
+        if not isinstance(ident,str) or ident not in rows or ident in seen:raise ValidationError('Unknown or duplicate migration location ID.')
+        seen.add(ident)
+        if any(not isinstance(update[k],str) for k in fields-{'port'}):raise ValidationError('Invalid connection setting type.')
+        name=update['name'].strip()
+        if not name or len(name)>80 or any(ord(c)<32 for c in name):raise ValidationError('Enter a location name of 1–80 characters.')
+        if isinstance(update['port'],bool) or not isinstance(update['port'],(str,int)):raise ValidationError('Invalid service port.')
+        try:r=Router(update['host'],update['username'],'validation',update['port'],update['fingerprint'],update['transport'])
+        except (ValueError,TypeError,AttributeError) as error:raise ValidationError('Invalid migration connection settings: '+str(error)) from error
+        replacement={'id':ident,'name':name,'host':r.host,'username':r.username,'port':r.port,'transport':r.transport,'fingerprint':r.fingerprint}
+        for key in sorted(fields):
+            if replacement[key]!=rows[ident][key]:changes.append({'location_id':ident,'location':name,'field':key,'before':rows[ident][key],'after':replacement[key]})
+        rows[ident].update(replacement)
+    validate(result)
+    return result,sorted(rows.values(),key=lambda row:row['name'].casefold()),changes
 
 def export(root):
     files={}
