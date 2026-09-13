@@ -5,6 +5,36 @@ A local MikroTik management application for **Nelsonict Services Limited**: conn
 **Version 0.4.0 — pilot, not a production-certified release.** Targets RouterOS v7 API and REST services. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
 
 
+## Start here
+
+For a first deployment, use an **existing working hotspot** and test one local voucher before selling batches. The application runs on the owner's computer; RouterOS enforces installed ticket expiry. Internet access is needed for optional AI/payment services, while local management requires a reachable router management address.
+
+| Your goal | Start with |
+|---|---|
+| Try the interface without a router | [Run from source](#run-from-source), then Open demonstration |
+| Connect an existing hotspot and sell tickets | [First-sale walkthrough](#first-sale-walkthrough) |
+| Create a new hotspot or isolated office LAN | [Supported scenarios](#supported-scenarios) |
+| Choose rules for stable or intermittent electricity | [Choosing an expiry policy](#choosing-an-expiry-policy) |
+| Print branded tickets or install a PIN portal | [Templates](#template-editor-and-customer-login-pages) |
+| Collect online payments | [Payment configuration](#payment-configuration) |
+| Manage a remote location or RADIUS users | [Remote control and User Manager](#remote-control-and-user-manager) |
+| Access the dashboard from a phone | [Phone connection example](#phone-connection-example) |
+| Upgrade an existing installation | [Upgrade and migration](#upgrade-and-migration) |
+| Resolve an error or interrupted operation | [Troubleshooting](#troubleshooting) |
+| Find implementation and release information | [Development](#development-and-verification) and [documentation index](#documentation) |
+
+## First-sale walkthrough
+
+1. **Prepare the site.** Verify that the existing hotspot already provides internet, preserve a separate router backup, and keep independent management access. Install/run the application and select the enabled management service.
+2. **Save the location and connect.** Enter its name, IPv4 address, username and service settings. Supply the session password and inspect the router. Reuse this saved location so subsequent archives and orders stay associated with it.
+3. **Prepare a profile.** Use the existing-hotspot scenario if you need a new local-user profile. Review its rate limits and operation list, acknowledge your backup and apply the reviewed plan. Use a plain profile without custom login/logout scripts for tracked vouchers.
+4. **Verify time and expiry.** Synchronize router NTP, then open **Vouchers & users → Review / install engine**. Review and install the app-owned automation. Choose the policy using the examples below.
+5. **Set the price and ticket design.** Save a profile price/currency. In **Template editor**, choose PIN or separate credentials, branding, and paper layout. For one-field PIN login, prepare and install the corresponding portal on the intended hotspot server.
+6. **Test one voucher.** Generate one ticket, preview it and log in from a customer device. Check first activation, rate limiting, disconnect/disable behavior and the selected expiry policy. Confirm that printing fits the intended printer.
+7. **Generate sale stock.** Create the desired batch, up to 100 tickets. Use Saved vouchers to reprint by batch or profile. For a cash sale, record the amount in Sales reports; generating or printing alone does not record a sale.
+8. **Add payments if required.** Configure a provider in sandbox/test mode, restart the backend, reconnect the location and test a checkout through verified issuance. Deliver the resulting voucher to the customer yourself.
+9. **Close the business day.** Review connected/expired tickets, pending payment orders and sales totals. Save an application backup and periodically make a stopped full-data-folder backup. Keep the backend running whenever payment verification is expected to continue.
+
 ## Review fixes — 13 September 2026
 
 - Startup expiry now shortens a previously stored next-day fallback when an earlier next-day boot requires expiry at boot +10 minutes. It never extends the stored deadline or re-enables expired accounts.
@@ -192,6 +222,22 @@ The phone must have a network route to the MikroTik management address. A guest 
 
 References: [Flutter platform support](https://flutter.dev/development), [iOS build and release requirements](https://docs.flutter.dev/deployment/ios), and [Apple local-network privacy guidance](https://developer.apple.com/videos/play/wwdc2020/10110/).
 
+## Choosing an expiry policy
+
+Electricity availability does not select a policy automatically. Choose the rule that matches what the customer is buying; a stable-power location can still sell either elapsed or connected-time packages.
+
+| Policy | Suitable offer | Example and power behavior |
+|---|---|---|
+| Elapsed | A fixed period from first use | A 1-day ticket activated Monday at 09:00 expires Tuesday at 09:00, including offline time and power cuts. |
+| Connected-time | A purchased allowance of actual use | A 1-day allowance means 24 accumulated online hours; disconnected time does not consume the allowance. |
+| Business-day closing | Access until the next closing time | With closing at 22:00, a ticket activated at 14:00 ends at 22:00. Activation exactly at closing uses the following day's closing. |
+| Next-day startup | A daily offer tied to the next day's restart | A used ticket from Monday expires at 08:10 after a Tuesday 08:00 boot. If the router stays on overnight, the configured fallback applies instead. |
+| Fixed date/time | An event or shared absolute deadline | All tickets in the batch expire at the selected instant, even if never used. |
+
+For startup tickets, an earlier next-day boot shortens a future stored fallback: a stored 10:10 fallback becomes 08:10 after an 08:00 boot. Later restarts never extend a deadline, and expired accounts are never revived. Unused startup tickets do not expire simply because midnight passes. Existing installations need the engine upgrade described below.
+
+Elapsed/connected durations are 1 day, 3 days, 7 days or 28 days. Business/startup policies use daily scheduling settings instead. Policy offsets are fixed minutes from UTC (Nigeria: +60); they do not automatically change for daylight saving. First activation and enforcement depend on the clock rules in [EXPIRY.md](EXPIRY.md), and scheduler checks run at 30-second intervals.
+
 ## Profile prices
 
 Save a price and currency for each hotspot user profile in **Vouchers & users**. Newly generated voucher archives retain their price snapshot for printing and sales tracking. Updating a profile price does not rewrite previously archived ticket prices. Payment checkout uses saved NGN profile prices; printing a price does not itself mark a voucher sold.
@@ -240,6 +286,32 @@ Create Paystack, Monnify or Flutterwave checkout links using saved NGN profile p
 Download and restore profile prices, templates, voucher archives, SQLite sales records and saved location settings from Connection guide. Restores preview replacements and save a recovery copy first. Backup files contain voucher passwords; payment orders and secrets are excluded. See [BACKUPS.md](BACKUPS.md).
 
 
+## Payment configuration
+
+Set credentials in the **backend process environment**, then restart the app. No `.env` loader or browser credential form is provided. Configure only the providers you intend to use; never place secrets in source files, ticket templates or GitHub.
+
+| Integration | Environment variables | Notes |
+|---|---|---|
+| Paystack | `PAYSTACK_SECRET_KEY` | Test/live mode follows the key prefix. |
+| Monnify | `MONNIFY_API_KEY`, `MONNIFY_SECRET_KEY`, `MONNIFY_CONTRACT_CODE`, `MONNIFY_REDIRECT_URL` | `MONNIFY_MODE` defaults to `test`; explicitly set `live` for live processing. Customer name is required. |
+| Flutterwave | `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_REDIRECT_URL` | Uses the v3 Standard checkout integration; test/live mode follows the key. |
+| Optional AI review | `OPENAI_API_KEY`, `OPENAI_MODEL` | Both are required for cloud analysis; local diagnostic checks remain available without them. |
+| Data directory | `NELSONICT_DATA_DIR` | Optional path override for all owner data; set it before starting the backend. |
+
+Redirect URLs must be HTTPS receipt/instruction pages you control. The app does not deploy those pages. A redirect does not authorize a voucher: the backend verifies payment reference, amount, currency, customer and provider mode before issuance. Customers receive the hosted checkout link, never the private owner launch URL. Checkout requires customer internet access; walled-garden provisioning is not included.
+
+**Operational sequence:** save a positive NGN profile price → select the ticket settings → create a checkout link → customer pays → backend verifies → one voucher is issued → owner retrieves and delivers it. Each order snapshots its price/settings. The background worker checks up to three pending orders per pass, normally every 30 seconds; provider latency can extend that interval.
+
+| Order condition | Owner response |
+|---|---|
+| Pending | Keep the original location connected; use Check payments or wait for the worker. |
+| Initialization interrupted | Inspect the provider dashboard and stored order before creating a replacement checkout. |
+| Issued | Retrieve the existing voucher; do not create another ticket for the same payment. |
+| Issuing after a crash, needs-review, or verification-mismatch | Compare provider records, voucher archive and change journal. Resolve the actual router write and payment before manually delivering a replacement or refund. |
+| Location disconnected or switched | Reconnect the original saved location to resume eligible pending orders. |
+
+Automatic issuance is attempted at most once after intent is persisted. An uncertain router write is not automatically retried. Changing provider keys/mode can prevent new credentials from processing old orders. Refunds, disputes, automatic revocation and a payment-recovery console are not implemented. See [PAYMENTS.md](PAYMENTS.md) before enabling live payments.
+
 ## SQLite sales ledger and daily/monthly reports
 
 Open **Sales reports** after connecting to a location. Filter the date range and profile, select Daily or Monthly, and set the UTC offset (Nigeria: +60 minutes). Totals group by profile and currency; Export report CSV downloads the displayed totals. Values are gross recorded sales, before gateway fees/refunds, not profit or provider settlement balances.
@@ -249,6 +321,42 @@ The inventory lists confirmed archived vouchers as sold, unsold, payment pending
 Verified, issued live-provider orders are indexed automatically when sales reports load. Test payments and paid-but-unissued/review orders do not count as sales. Each voucher has at most one active sale. New online sales use issuance time; older orders without that timestamp fall back to verification/order-creation time and may need historical reconciliation.
 
 Python's built-in SQLite stores inventory metadata and sale/correction records in `data/sales.sqlite3`, with schema versioning, indexes and transactional writes. Money uses integer minor units. This database contains no voucher or router passwords. Existing templates, credentials, payment orders and router settings retain their established stores; no wholesale migration is required. SQLite data is included in the application backup/restore tool. See [SALES.md](SALES.md).
+
+## Phone connection example
+
+The phone connects to the running Python backend, which connects to the router. These are two separate connections with separate certificates and network requirements. For an owner computer at `192.168.10.20`, use a certificate trusted by the phone whose subject alternative name includes that IP:
+
+```sh
+python3 server.py --listen 192.168.10.20 --port 8765 --tls-cert /private/server.crt --tls-key /private/server.key --no-browser
+```
+
+Replace the address and certificate paths with your own. On Windows, use `py -3 server.py` with the same flags and Windows paths. Open the exact launch URL printed by the process on the phone. Restrict the computer firewall to owner devices or the management VPN. Non-loopback HTTP, `0.0.0.0` and public backend bind addresses are refused.
+
+Restarting the app changes the launch token, so reopen the new link on every owner device. All devices share full owner access and one active router; there are no staff roles or individually revocable device accounts. Away from the site, connect through an existing management VPN. Remote control does not create tunnels, configure port forwarding or bypass Starlink/carrier NAT. Router address input currently accepts IPv4 literals, not DDNS hostnames or IPv6.
+
+## Upgrade and migration
+
+1. Record the current application version and active data path. Resolve or record outstanding payment and uncertain-write cases before maintenance.
+2. Stop the backend. Copy its **entire data directory** to a private backup location, including payment orders and change journals. Preserve router configuration and User Manager database backups separately.
+3. Install the updated source or package. Keep the prior application and data backup available for recovery. For source updates, preserve the existing `data/` folder; when changing installation type, move the complete data folder to its new default path or point `NELSONICT_DATA_DIR` to it.
+4. Start one backend instance. Use its new launch URL and verify saved locations, prices, templates, archives and reports. Do not run old and new versions against the same folder or allow two copied installations to process the same payment orders.
+5. Reconnect the intended saved location and synchronize router NTP. Open **Vouchers & users → Review / install engine**, review the affected scheduler/profile sources and install the upgrade. Exact known older Nelsonict sources can be upgraded; modified/custom sources require manual review. Updating application files alone leaves old router automation installed.
+6. Test one voucher and inspect existing tracked tickets. Keep historical rollback journals: archive loading uses them to quarantine previously rolled-back stock. Independently deleted router users still need manual reconciliation.
+7. If recovery is needed, stop the backend first. Preserve the failed installation's data for investigation. Restore a compatible application/data pair only after reconciling any payments and router changes since the backup; restoring old local files does not undo router writes or provider payments.
+
+### What each backup protects
+
+| Data | Application JSON backup | Stopped full data-folder copy |
+|---|---|---|
+| Saved location settings and IDs | Included; no router passwords | Included; no session passwords |
+| Profile prices, templates and voucher archives | Included, including readable voucher credentials | Included |
+| SQLite inventory and sales corrections | Included as validated ledger rows | Included as local database files |
+| Payment orders and issuance state | Excluded | Included |
+| Change journals and other local recovery state | Not a full journal backup | Included |
+| Backend environment secrets and external TLS keys | Excluded | Preserve separately if outside the data directory |
+| Router configuration and User Manager database | Excluded | Excluded; take separate router-side backups |
+
+Application restore requires a disconnected router, preview and the word `RESTORE`. It saves a recovery copy first, replaces matching files and retains files absent from the backup. It does not recreate router users or redeploy portals. Treat backups and voucher CSVs as credentials: backups are not encrypted by the application. See [BACKUPS.md](BACKUPS.md) for import limits and partial-restore recovery.
 
 ## Plan, apply and recovery
 
@@ -263,6 +371,57 @@ Python's built-in SQLite stores inventory metadata and sale/correction records i
 
 Local journals live in `data/`, with restrictive POSIX modes where supported. They contain router addresses and voucher identifiers (which are also PINs), so treat them as secrets. Windows users should keep the project in a private user folder with appropriate ACLs. `data/`, exports, backups, private keys and launch/runtime state are excluded from Git. The app serves an explicit allowlist of frontend assets; journals are never exposed as static files.
 
+## Troubleshooting
+
+| Symptom | Check and next action |
+|---|---|
+| Browser does not open / port is occupied | Open the printed launch URL manually. Try `--port 8766`; keep the backend terminal open. |
+| Unauthorized page after restarting | Use the new launch URL. Its previous per-process token is no longer valid. |
+| Router connection times out | Verify the IPv4 address, selected API/REST service and custom port, local/VPN route, router firewall and whether guest-hotspot access permits management. |
+| Login or permission denied | Check router credentials and service policies (`api` or `rest-api`) plus read/write access. Script/UM operations can require additional permitted menus. |
+| TLS verification fails | Check the service certificate and trust chain, or independently verify its SHA-256 fingerprint. Phone-to-backend trust is separate from backend-to-router trust. |
+| Wizard refuses an interface or network | Use a genuinely unused Ethernet port and non-overlapping subnet/pool. The wizard does not detach bridge members or repair the WAN. Review the specific prerequisite error. |
+| NTP synchronization required | Inspect router NTP client/server status, time and reachability. Wait for synchronized status; a manually set clock is insufficient. |
+| Engine source differs | Preserve and inspect the existing script. Only exact recognized Nelsonict automation can be upgraded automatically; custom sources are not overwritten. |
+| First login is unknown | Older tickets lack an activation record. Do not infer historical activation from a current session start. |
+| Expired ticket is still connected | Check the last refresh, NTP, managed metadata, hook/scheduler and router log. Disable the local account explicitly if required; investigate automation before more sales. |
+| Deleted/rolled-back voucher is missing from prints | Application rollback intentionally revokes that stock. Inspect its change journal and router state; a failed deletion still leaves the archive quarantined. |
+| Online payment has no ticket | Reconnect the original location, inspect the order state and provider response, then compare archive/journal/router records. Do not blindly retry an uncertain issuance. |
+| Sales totals differ from bank settlement | Reports contain recorded gross sales, exclude test/unissued orders, and do not subtract provider fees/refunds. Check profile/date/UTC-offset filters and unrecorded cash sales. |
+| Portal fails to authenticate PIN users | Match the template to the credential mode and actual hotspot server/profile. Preserve RouterOS support files, including CHAP assets; use the documented portal restore path if necessary. |
+| User Manager menu is unavailable | Verify the matching installed package and account permissions. Package installation/reboot is outside the application. |
+| AI result is rejected after switching routers | Take a fresh snapshot on the current connection. Stale cloud results cannot authorize changes to another location. |
+| Dashboard shows stale data | Restore backend/router connectivity and refresh. The view is a sampled snapshot, normally refreshed every 15 seconds. |
+
+When reporting a problem, include application version, installation type, exact RouterOS version/architecture, selected transport, scenario, error text and whether the write is uncertain. Share a reviewed diagnostic projection when useful. Remove launch tokens, passwords, payment keys, private keys and customer voucher credentials. Network names/addresses can remain in diagnostic evidence; inspect it before sharing.
+
+## Current operating limits
+
+- **Attended pilot:** real-router execution, power-cycle behavior and live payment acceptance remain release gates. Automated tests do not certify RouterOS 7.24.2 compatibility.
+- **Prepared networks:** no factory-reset installer, WAN provisioning, Wi-Fi/AP controller, VLAN/bridge designer, multi-WAN or PPPoE deployment. The office scenario blocks private routed destinations and is not a shared camera-network design.
+- **One owner backend:** one active location, shared owner token and one process per data store. AI/provider waits release the main operation lock; router operations still serialize and can take time.
+- **Separate RADIUS workflow:** User Manager settings, users, profiles and limitations are supported, but local voucher printing, payment issuance, SQLite sales and Nelsonict startup expiry do not automatically apply to RADIUS accounts. Disabling a User Manager user does not guarantee immediate remote NAS disconnection.
+- **Bounded automation:** AI selects supported repair types; it cannot execute arbitrary suggested commands, infer lost activation dates or repair every configuration. Diagnostic imports are evidence, not executable router backups.
+- **Scale not benchmarked:** retained accounts, per-batch profiles, 30-second expiry scans and 15-second dashboard polling need capacity testing on the intended router. No certified maximum client count is claimed.
+- **Native mobile remains planned:** the responsive browser interface is available now; a Flutter Android/iOS application and standalone phone-to-router operation still require implementation.
+
+See [PROJECT_REVIEW.md](PROJECT_REVIEW.md) for the audit and fix addendum, including remaining setup-fingerprint and prerequisite coverage gaps. Avoid concurrent configuration edits; a reviewed plan is not a complete guarantee that every external dependency is unchanged.
+
+## Project layout
+
+| Files | Responsibility |
+|---|---|
+| `server.py`, `web/` | Local HTTP/HTTPS backend, owner endpoints and browser interface |
+| `core.py`, `api_transport.py` | Router inspection, scenario planning, validated operations and transports |
+| `expiry.py`, `voucher_history.py`, `pricing.py` | Ticket policy/automation, archived credentials and profile price snapshots |
+| `templates.py`, `portal_install.py` | Voucher/portal rendering and reviewed portal installation |
+| `diagnostics.py`, `llm_review.py` | Projected evidence, supported repairs and optional AI review |
+| `gateways.py`, `payments.py`, `sales.py` | Provider adapters, order/issuance state and SQLite sales ledger |
+| `locations.py`, `backups.py`, `app_paths.py` | Saved locations, backup/restore and installation-specific storage |
+| `user_manager.py` | Allowlisted RouterOS User Manager/RADIUS configuration |
+| `packaging/`, build scripts, `.github/workflows/` | Desktop package creation and automated checks |
+| `test_*.py`, `test_cloud_ui.js` | Simulated-router, storage, transport and concurrency regression checks |
+
 ## Development and verification
 
 ```sh
@@ -274,9 +433,11 @@ node --check web/business.js
 node --check web/sales.js
 node --check web/templates.js
 node --check web/table-utils.js
+node --check web/user-manager.js
+node test_cloud_ui.js
 ```
 
-Node is optional and only needed for the JavaScript syntax check. GitHub Actions includes Python checks on Ubuntu and Windows. A successful simulation test does not establish MikroTik compatibility.
+Node is optional for running the application and is used for JavaScript syntax and frontend concurrency checks during development. GitHub Actions includes Python checks on Ubuntu and Windows. A successful simulation test does not establish MikroTik compatibility.
 
 **Last recorded local checks:** 170 Python tests passed, frontend syntax and navigation checks passed, and the DEB built, extracted and passed an entrypoint smoke check. Windows EXE build/launch, installed desktop launch, browser visual checks, real-router expiry and live AI/payment acceptance remain unverified. These are recorded local results, not a claim that GitHub CI or hardware certification passed. See [VALIDATION.md](VALIDATION.md).
 
@@ -300,6 +461,8 @@ The linked legacy documentation warns that it is frozen; MikroTik directs reader
 
 | Guide | Details |
 |---|---|
+| [Remote control / User Manager](USER_MANAGER.md) | Remote prerequisites, RADIUS setup, supported fields and recovery |
+| [Project review](PROJECT_REVIEW.md) | Practicality audit, addressed defects and remaining gaps |
 | [Packaging](PACKAGING.md) | EXE/DEB builds, artifacts and data migration |
 | [Expiry](EXPIRY.md) | Ticket policies, activation records and clock behavior |
 | [Templates](TEMPLATES.md) | Ticket printing, saved batches and portal installation |
