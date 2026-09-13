@@ -115,3 +115,5 @@ See DIAGNOSTICS.md for supported repairs, sharing scope and manual recovery.
 ## User Manager
 
 Owner-authenticated POST routes require an active router. `/api/user-manager/list` returns allowlisted configuration and read-only operational tables with secrets redacted. `/api/user-manager/preview` accepts an allowlisted `path`, `action` (create/update/delete), selected `id` for record mutations and a `values` object of string fields; returns an expiring review ID and redacted changes. `/api/user-manager/apply` accepts `review_id`, `backup: true` and `confirmation: APPLY USER MANAGER`. Plans are location-bound, checked against fresh configuration and consumed before writes. See USER_MANAGER.md for menu scope and recovery.
+
+`POST /api/vouchers/validate-print` accepts 1–100 `tickets` with `batch` and `username`; requires the active router and rejects any missing/revoked archive entry before browser printing. AI and payment routes still use the same request/response contract but release the router lock during external network calls; stale-location results may return a validation error while an order remains recorded in its original scope.

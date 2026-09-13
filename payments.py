@@ -1,5 +1,6 @@
 """Paystack hosted checkout and verified, at-most-once voucher issuance."""
 import hashlib,http.client,json,os,re,secrets,time
+from contextlib import nullcontext
 from decimal import Decimal
 from urllib.parse import quote,urlsplit
 from core import ValidationError
@@ -48,7 +49,7 @@ class Orders:
         else:update=gateways.initialize(order)
         order.update(state='pending',**update);self.store.write(records)
         return order
-    def reconcile(self,issue):
+    def reconcile(self,issue,issuance_guard=None):
         records=self.store.read()
         checked=0
         for ref,order in sorted(records.items(),key=lambda pair:pair[1].get('checked',0)):
@@ -64,13 +65,15 @@ class Orders:
                 if result.get('status')!='success':continue
                 if result.get('reference')!=ref or type(result.get('amount')) is not int or result['amount']!=order['amount'] or result.get('currency')!=order['currency'] or result.get('domain')!=order['domain'] or str(result.get('customer',{}).get('email','')).casefold()!=order['email'].casefold():
                     order['state']='verification-mismatch';self.store.write(records);continue
-                # Intent saved before any router write; never automatically repeat issuance.
-                order['state']='issuing';order['verified_at']=time.time();self.store.write(records)
-                try:
-                    result=issue(order)
-                    order.update(state='issued',issued_at=time.time(),batch=result['vouchers'][0]['batch'],journal=result['journal'])
-                except Exception:order['state']='needs-review'
-                self.store.write(records)
+                # The guard reacquires the router lock and verifies the captured connection.
+                # A switched/disconnected location leaves this order pending, never needs-review.
+                with issuance_guard() if issuance_guard else nullcontext():
+                    order['state']='issuing';order['verified_at']=time.time();self.store.write(records)
+                    try:
+                        result=issue(order)
+                        order.update(state='issued',issued_at=time.time(),batch=result['vouchers'][0]['batch'],journal=result['journal'])
+                    except Exception:order['state']='needs-review'
+                    self.store.write(records)
             except Exception:continue  # Network failure leaves pending; no issue before verification.
         return records
 

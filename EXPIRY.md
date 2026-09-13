@@ -52,3 +52,7 @@ The 30-second scheduler interval means cutoff enforcement can occur up to approx
 ## Older tickets
 
 Older or externally created local accounts show unknown historical first login. The app can still count active sessions, display the current session's estimated start and flag an exhausted connected-time allowance. It does not guess calendar expiry for accounts without managed policy metadata. Such accounts can be disabled or disconnected explicitly. For calendar policies and first-login tracking, issue new tracked tickets; automatic migration of already-used accounts is not included.
+
+## Startup fallback correction and upgrade
+
+An earlier next-day boot now shortens a stored fallback to boot +600 seconds without extending deadlines or reviving expired users. Update the application, synchronize router NTP, then review/install the engine from Vouchers & users to update exact known previous Nelsonict scheduler and login hooks. Custom script sources are left for manual review. Both Python and native script logic are updated; native execution still requires hardware acceptance.

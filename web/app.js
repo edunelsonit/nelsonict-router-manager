@@ -7,15 +7,23 @@ let router = null, plan = null, batch = [], busy = false, currentView='connect';
 const titles = {remote:'Remote control',usermanager:'User Manager',packages:'Desktop packages',diagnostics:'AI setup walkthrough',sales:'Sales reports',connect:'Connect your router',templates:'Voucher template editor',dashboard:'Owner dashboard',wizard:'Setup your network',vouchers:'Manage hotspot access',history:'Review your changes',help:'Connection guide'};
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function feedback(message,error=false){const el=$('#feedback');el.textContent=message;el.classList.toggle('error',error);el.hidden=false;}
+const cloudRequests=new Set();
+let connectionEpoch=0;
 async function api(path,data={}){
+ const cloud=['diagnostics/ai','payments/create','payments/check'].includes(path);
+ if(['connect','disconnect','demo'].includes(path))connectionEpoch++;
+ const epoch=connectionEpoch;
+ if(cloud&&cloudRequests.has(path))throw new Error('This cloud request is already running. Other controls remain available.');
  if(busy) throw new Error('An operation is already in progress. Please wait.');
- busy=true; document.querySelectorAll('button').forEach(b=>b.disabled=true);
+ if(cloud)cloudRequests.add(path);
+ else{busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);}
  try{
   const response=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':token||''},body:JSON.stringify(data)});
   const result=await response.json();
   if(!response.ok) throw new Error(result.error+(result.journal?' Change record: '+result.journal:''));
+  if(cloud&&epoch!==connectionEpoch)throw new Error('Connection changed while the cloud request was running. Refresh the current location.');
   return result;
- }finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}
+ }finally{if(cloud){cloudRequests.delete(path);}else{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
 }
 async function run(fn){try{await fn();}catch(e){feedback(e.message,true);}}
 function view(name){
@@ -75,13 +83,13 @@ $('#voucher-form').addEventListener('submit',e=>{e.preventDefault();run(async()=
  await window.renderVoucherBatch();
  $('#batch-panel').hidden=false;e.target.elements.confirm.checked=false;renderStatus(await api('status'));feedback(`Created ${batch.length} ${result.demo?'simulated ':''}vouchers. Print or export this batch.`);
 });});
-$('#print').addEventListener('click',()=>{const frame=$('#batch-preview');frame.contentWindow.focus();frame.contentWindow.print();});
+$('#print').addEventListener('click',()=>run(async()=>{await api('vouchers/validate-print',{tickets:batch.map(v=>({batch:v.batch,username:v.username}))});const frame=$('#batch-preview');frame.contentWindow.focus();frame.contentWindow.print();}));
 $('#csv').addEventListener('click',()=>{const cell=x=>{let v=String(x);if(/^[=+@\-\t\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};const rows=[['Credential mode','Username','Password','Allowance','Expiry policy','Profile','Batch','Base profile','Price','Currency'],...batch.map(v=>[v.credential_mode||'pin',v.username||v.pin,v.password||v.pin,v.allowance,v.policy||'connected',v.profile,v.batch,v.base_profile||v.profile,v.price_amount||'',v.currency||''])];download('nelsonict-vouchers.csv',rows.map(row=>row.map(cell).join(',')).join('\r\n'),'text/csv');});
 function confirmation(title,message,word){return new Promise(resolve=>{const d=$('#confirm-dialog');$('#dialog-title').textContent=title;$('#dialog-text').textContent=message;$('#dialog-label').firstChild.textContent='Type '+word+' to confirm';$('#dialog-input').value='';d.returnValue='cancel';d.addEventListener('close',()=>resolve(d.returnValue==='confirm'&&$('#dialog-input').value===word),{once:true});d.showModal();});}
 $('#users-body').addEventListener('click',e=>{const b=e.target.closest('[data-disable]');if(!b)return;run(async()=>{if(!await confirmation('Disable this voucher?','The account record stays. Its active sessions and login cookies will be removed.','DISABLE'))return;await api('disable',{id:b.dataset.disable,confirmation:'DISABLE'});renderStatus(await api('status'));feedback('Voucher disabled; matching sessions and cookies removed.');});});
 async function loadHistory(){const {records}=await api('history');$('#history-list').innerHTML=records.length?records.map(r=>`<div class="card history-entry"><div class="card-heading"><h3>${escapeHTML(r.kind)} ${r.demo?'• demonstration':''}</h3>${!['ticket-action','diagnostic-repair','user-manager'].includes(r.kind)?`<button class="secondary" data-rollback="${escapeHTML(r.id)}">Rollback additions</button>`:''}</div><small>${escapeHTML(new Date(r.created*1000).toLocaleString())} • ${escapeHTML(r.id)}</small><ol>${r.entries.map(x=>`<li class="${x.state==='uncertain'?'uncertain':''}">${escapeHTML(x.label)} — <strong>${escapeHTML(x.state)}</strong></li>`).join('')}</ol></div>`).join(''):'<div class="card empty">No change records for this router on this computer.</div>';}
 $('#refresh-history').addEventListener('click',()=>run(loadHistory));
-$('#history-list').addEventListener('click',e=>{const b=e.target.closest('[data-rollback]');if(!b)return;run(async()=>{if(!await confirmation('Remove these additions?','This may disconnect clients. Only recorded additions are removed; uncertain writes require manual inspection.','ROLLBACK'))return;const result=await api('rollback',{id:b.dataset.rollback,confirmation:'ROLLBACK'});await loadHistory();renderStatus(await api('status'));feedback(`Recorded additions rolled back. ${result.uncertain} uncertain operations require manual inspection.`);});});
+$('#history-list').addEventListener('click',e=>{const b=e.target.closest('[data-rollback]');if(!b)return;run(async()=>{if(!await confirmation('Remove these additions?','This may disconnect clients. Only recorded additions are removed; uncertain writes require manual inspection.','ROLLBACK'))return;batch=[];$('#batch-panel').hidden=true;$('#batch-preview').srcdoc='';const result=await api('rollback',{id:b.dataset.rollback,confirmation:'ROLLBACK'});await loadHistory();renderStatus(await api('status'));feedback(`Recorded additions rolled back. ${result.uncertain} uncertain operations require manual inspection.`);});});
 if(!token)feedback('Start server.py and open its private launch URL to use the application.',true);
 
 const policyDescriptions={
@@ -93,7 +101,7 @@ const policyDescriptions={
 };
 function expiryFields(){const mode=$('#expiry-mode').value;$('#policy-explanation').textContent=policyDescriptions[mode];$('#offset-field').hidden=!['business','startup'].includes(mode);$('#closing-field').hidden=mode!=='business';$('#fallback-field').hidden=mode!=='startup';$('#fixed-field').hidden=mode!=='fixed';$('#voucher-form [name=duration]').disabled=!['elapsed','connected'].includes(mode);}
 $('#expiry-mode').addEventListener('change',expiryFields);expiryFields();
-$('#preview-expiry').addEventListener('click',()=>run(async()=>{const r=await api('expiry/preview');$('#expiry-source').textContent=r.scheduler;$('#expiry-hook').textContent=r.hook;$('#expiry-install-panel').hidden=false;feedback(r.operations.length?'Review the scripts, then install the router expiry engine.':'The expected expiry engine is already installed and enabled.');}));
+$('#preview-expiry').addEventListener('click',()=>run(async()=>{const r=await api('expiry/preview');$('#expiry-operations').textContent=JSON.stringify(r.operations.map(o=>({action:o.id?'Update known script':'Create',path:o.path,id:o.id,label:o.label})),null,2);$('#expiry-source').textContent=r.scheduler;$('#expiry-hook').textContent=r.hook;$('#expiry-install-panel').hidden=false;feedback(r.operations.length?'Review the listed changes, then install or upgrade the router expiry engine.':'The expected expiry engine is already installed and enabled.');}));
 $('#install-expiry').addEventListener('click',()=>run(async()=>{if(!await confirmation('Install router expiry automation?','This adds a scheduler that manages tracked ns2 tickets every 30 seconds. Review the scripts and preserve a router backup.','INSTALL'))return;const result=await api('expiry/install',{confirmation:'INSTALL'});feedback(result.count?'Router expiry checker installed. Create tracked tickets below.':'Router expiry checker is already installed.');}));
 function stamp(seconds){return seconds?new Date(seconds*1000).toLocaleString():'Unknown / not recorded';}
 function renderOwner(){

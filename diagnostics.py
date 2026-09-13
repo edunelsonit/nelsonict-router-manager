@@ -22,13 +22,25 @@ def project(raw):
             clean={k:v for k,v in row.items() if k in FIELDS and isinstance(v,(str,int,float,bool))}
             if menu=='ip/hotspot/user':
                 clean['name']='ticket-'+str(index+1)
-                try:clean['expiry_metadata']=decode(canonical(row.get('comment','')) or '')
-                except ValidationError:clean['expiry_metadata']='invalid'
+                if 'comment' in row:
+                    try:clean['expiry_metadata']=decode(canonical(row.get('comment','')) or '')
+                    except ValidationError:clean['expiry_metadata']='invalid'
+                else:
+                    metadata=row.get('expiry_metadata')
+                    if metadata is None or metadata=='invalid':clean['expiry_metadata']=metadata
+                    elif isinstance(metadata,dict) and set(metadata)==set('mode duration offset cutoff fixed fallback first due batch'.split()):
+                        try:clean['expiry_metadata']=decode(encode(metadata))
+                        except (ValidationError,KeyError,TypeError,ValueError):raise ValidationError('Invalid projected expiry metadata.')
+                    else:raise ValidationError('Invalid projected expiry metadata.')
             if menu in ('ip/hotspot/active','ip/hotspot/cookie'):
                 clean.pop('name',None);clean['account']='redacted'
             if menu=='system/identity':clean['name']='router'
-            if menu=='system/scheduler':clean['script_present']=bool(row.get('on-event'))
-            if menu=='ip/hotspot/user/profile':clean['login_hook_present']=bool(row.get('on-login'));clean['logout_hook_present']=bool(row.get('on-logout'))
+            for flag,source in ({'script_present':'on-event'} if menu=='system/scheduler' else {'login_hook_present':'on-login','logout_hook_present':'on-logout'} if menu=='ip/hotspot/user/profile' else {}).items():
+                if source in row:clean[flag]=bool(row[source])
+                elif flag in row:
+                    if type(row[flag]) is not bool:raise ValidationError('Projected presence flags must be boolean.')
+                    clean[flag]=row[flag]
+                else:clean[flag]=False
             output[menu].append(clean)
     return output
 
@@ -36,7 +48,9 @@ def import_file(text,kind):
     if not isinstance(text,str) or len(text.encode())>262144:raise ValidationError('Export file limit is 256 KB.')
     skipped=0
     if kind=='json':
-        obj=json.loads(text);raw=obj.get('configuration',obj) if isinstance(obj,dict) else None
+        obj=json.loads(text)
+        if isinstance(obj,dict) and 'schema_version' in obj and (type(obj['schema_version']) is not int or obj['schema_version']!=1):raise ValidationError('Unsupported diagnostic schema version.')
+        raw=obj.get('configuration',obj) if isinstance(obj,dict) else None
         if not isinstance(raw,dict):raise ValidationError('Use a setup snapshot JSON object.')
     elif kind=='rsc':
         raw={};menu=''
@@ -55,9 +69,14 @@ def import_file(text,kind):
                 if '=' in word:
                     k,v=word.split('=',1)
                     if k in FIELDS:row[k]=v
+                    elif k=='comment' and menu=='ip/hotspot/user' and v.strip().startswith('ns2,'):
+                        try:row['expiry_metadata']=decode(canonical(v) or '')
+                        except ValidationError:row['expiry_metadata']='invalid'
+                    elif k in ('on-event','on-login','on-logout'):
+                        row[{'on-event':'script_present','on-login':'login_hook_present','on-logout':'logout_hook_present'}[k]]=bool(v)
             raw.setdefault(menu,[]).append(row)
     else:raise ValidationError('Import a .rsc text export or snapshot .json file. Binary backups are unsupported.')
-    result={'source':'imported-file','configuration':project(raw),'skipped_lines':skipped,'notice':'Read-only projection. Secrets, free-text comments and scripts are omitted. RSC parsing is partial; imported files never authorize changes.'}
+    result={'schema_version':1,'source':'imported-file','configuration':project(raw),'skipped_lines':skipped,'notice':'Read-only projection. Secrets, free-text comments and scripts are omitted. RSC parsing is partial; imported files never authorize changes.'}
     if len(json.dumps(result))>300000:raise ValidationError('Projected export is too large.')
     return result
 
@@ -114,7 +133,7 @@ def inspect(router,profile='',batch=''):
         if owned:add('missing-hook','ip/hotspot/user/profile',row,{'on-login':HOOK_SOURCE},'Restore a missing login hook on a verified managed batch profile.')
     if len(fixes)>1000:raise ValidationError('More than 1,000 repairs. Narrow the profile or batch filter.')
     if raw.get('ip/hotspot') and any(x.get('action')=='fasttrack-connection' for x in rows(raw.get('ip/firewall/filter',[]))):findings.append('FastTrack rules exist alongside Hotspot. Review exclusions and bandwidth enforcement before changing firewall rules.')
-    return {'source':'live-router','observed_at':time.time(),'clock':clock,'configuration':project(raw),'tickets':[{'id':u['.id'],'name':u.get('name',''),'profile':u.get('profile',''),'comment':u.get('comment',''),'protected':str(u.get('comment','')).strip().startswith(('ns2','ns-batch-'))} for u in users if not profile or u.get('profile')==profile],'unavailable':unavailable,'findings':list(dict.fromkeys(findings)),'fixes':fixes,'filters':{'profile':profile,'batch':batch}}
+    return {'schema_version':1,'source':'live-router','observed_at':time.time(),'clock':clock,'configuration':project(raw),'tickets':[{'id':u['.id'],'name':u.get('name',''),'profile':u.get('profile',''),'comment':u.get('comment',''),'protected':str(u.get('comment','')).strip().startswith(('ns2','ns-batch-'))} for u in users if not profile or u.get('profile')==profile],'unavailable':unavailable,'findings':list(dict.fromkeys(findings)),'fixes':fixes,'filters':{'profile':profile,'batch':batch}}
 
 def ai_payload(review):
     # No original ticket usernames/PINs, raw comments or script bodies in the cloud payload.

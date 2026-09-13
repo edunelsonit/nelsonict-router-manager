@@ -69,7 +69,15 @@ def decode(comment):
 
 def deadline(p,now,boot):
     """Return a durable due date; startup due only becomes final on a later day."""
-    if p['due']:return p['due']
+    if p['due']:
+        # A fallback stored after midnight can be shortened by the first later-day boot.
+        # Never extend a committed deadline or revive a ticket whose fallback has passed.
+        shift=p['offset']*60
+        day=(p['first']+shift)//86400
+        fallback=(day+1)*86400+p['fallback']-shift
+        if p['mode']=='startup' and p['first'] and p['due']==fallback and now<p['due'] and (boot+shift)//86400>day:
+            return min(p['due'],int(boot)+600)
+        return p['due']
     if p['mode']=='fixed':return p['fixed']
     first=p['first']
     if not first:return None
@@ -193,20 +201,51 @@ HOOK_GUARD = '''
   :error "Nelsonict login paused until NTP is synchronized";
 };
 '''
+LEGACY_HOOK_SOURCE = _HEADER + HOOK_GUARD + ':foreach uid in=[/ip hotspot user find where name=$user] do={\n' + _BODY.replace('ACTIVATE',ACTIVATION) + '\n};'
+LEGACY_SCHEDULER_SOURCE = _HEADER + ':foreach uid in=[/ip hotspot user find] do={\n' + _BODY.replace('ACTIVATE','# First activation is captured only by the login hook.') + '\n};'
+_STARTUP_FIX = """
+          # Shorten a provisional fallback after a later-day reboot; never extend expiry.
+          :if (($mode = "startup") && ($first > 0) && ($due > 0) && ($now < $due)) do={
+            :local firstDay (($first + $shift) / 86400);
+            :local provisional ((($firstDay + 1) * 86400) + $fallback - $shift);
+            :if (($due = $provisional) && ((($boot + $shift) / 86400) > $firstDay) && (($boot + 600) < $due)) do={ :set due ($boot + 600); };
+          };
+"""
+_BODY = _BODY.replace('          ACTIVATE', '          ACTIVATE' + _STARTUP_FIX)
 HOOK_SOURCE = _HEADER + HOOK_GUARD + ':foreach uid in=[/ip hotspot user find where name=$user] do={\n' + _BODY.replace('ACTIVATE',ACTIVATION) + '\n};'
 SCHEDULER_SOURCE = _HEADER + ':foreach uid in=[/ip hotspot user find] do={\n' + _BODY.replace('ACTIVATE','# First activation is captured only by the login hook.') + '\n};'
 
 def engine_operations(router):
-    current=router.call('system/scheduler')
+    current=router.call('system/scheduler');operations=[]
     matches=[x for x in current if x.get('name')==ENGINE_NAME]
     if matches:
         x=matches[0]
-        if x.get('on-event')!=SCHEDULER_SOURCE or x.get('disabled') in ('true','yes') or ros_seconds(x.get('interval'))!=30:
-            raise ValidationError('The Nelsonict expiry scheduler differs or is disabled. Inspect it in WinBox before creating tickets.')
-        return []
-    return [{'path':'system/scheduler','values':{'name':ENGINE_NAME,'interval':'30s','start-time':'startup',
-             'on-event':SCHEDULER_SOURCE,'policy':'read,write','disabled':'no','comment':'Nelsonict expiry v2'},
-             'label':'Install router expiry checker (every 30 seconds)'}]
+        if x.get('on-event') not in (SCHEDULER_SOURCE,LEGACY_SCHEDULER_SOURCE) or x.get('disabled') in ('true','yes') or ros_seconds(x.get('interval'))!=30:
+            raise ValidationError('The Nelsonict expiry scheduler differs or is disabled. Inspect it before installing or creating tickets.')
+        if x.get('on-event')==LEGACY_SCHEDULER_SOURCE:
+            operations.append({'path':'system/scheduler','id':x['.id'],'before':{'on-event':LEGACY_SCHEDULER_SOURCE},'values':{'on-event':SCHEDULER_SOURCE},'label':'Upgrade known Nelsonict scheduler startup handling'})
+    else:
+        operations.append({'path':'system/scheduler','values':{'name':ENGINE_NAME,'interval':'30s','start-time':'startup','on-event':SCHEDULER_SOURCE,'policy':'read,write','disabled':'no','comment':'Nelsonict expiry v2'},'label':'Install router expiry checker (every 30 seconds)'})
+    for profile in router.call('ip/hotspot/user/profile'):
+        if profile.get('on-login')==LEGACY_HOOK_SOURCE:
+            operations.append({'path':'ip/hotspot/user/profile','id':profile['.id'],'before':{'on-login':LEGACY_HOOK_SOURCE},'values':{'on-login':HOOK_SOURCE},'label':'Upgrade known Nelsonict login hook on '+profile['name']})
+    return operations
+
+def install_engine(router,operations,journal):
+    from core import execute
+    from urllib.parse import quote
+    for op in operations:
+        if 'id' not in op:execute(router,[op],journal);continue
+        target=op['path']+'/'+quote(op['id'],safe='');current=router.call(target)
+        if isinstance(current,list):current=current[0]
+        if any(current.get(k)!=v for k,v in op['before'].items()):raise ValidationError('Expiry automation changed. Review installation again.')
+        entry={**op,'state':'pending'};journal['entries'].append(entry);journal['save']()
+        try:
+            router.call(target,'PATCH',op['values'])
+            checked=router.call(target);checked=checked[0] if isinstance(checked,list) else checked
+            if any(checked.get(k)!=v for k,v in op['values'].items()):raise ValidationError('Expiry upgrade readback failed.')
+            entry['state']='applied';journal['save']()
+        except Exception:entry['state']='uncertain';journal['save']();raise
 
 def expiry_profile(base,batch):
     if base.get('on-login') and base.get('on-login') != HOOK_SOURCE:

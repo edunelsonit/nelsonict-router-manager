@@ -70,14 +70,15 @@ class SalesDB:
             for record in archives.values():
                 for v in record['vouchers']:
                     if v.get('creation_state')!='created':continue
+                    available=int(v.get('lifecycle','active')=='active')
                     ident=voucher_key(scope,v['batch'],v['username']);ref=v.get('payment_reference','');order=orders.get(ref,{})
                     test=int(v.get('payment_domain')=='test' or order.get('domain')=='test')
                     amount,currency=None,''
                     if 'price_amount' in v:
                         try:amount,currency=money(v['price_amount'],v['currency'])
                         except (ValidationError,KeyError):pass
-                    values=(ident,scope,v['batch'],v['username'],v.get('base_profile',v['profile']),amount,currency,ref,test,1)
-                    self.db.execute('INSERT INTO inventory VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET available=1',values)
+                    values=(ident,scope,v['batch'],v['username'],v.get('base_profile',v['profile']),amount,currency,ref,test,available)
+                    self.db.execute('INSERT INTO inventory VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET available=excluded.available',values)
                     if ref and not test and order.get('state')=='issued' and order.get('batch')==v['batch']:
                         self.db.execute('INSERT OR IGNORE INTO events VALUES(?,?,?,?,?,?,?,NULL)',('payment-'+ref,ident,scope,order['amount'],order['currency'],order.get('provider','paystack'),int(order.get('issued_at',order.get('verified_at',order['created'])))))
     def sell(self,scope,ident,amount=None,currency=None):

@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent
 from app_paths import data_directory
 DATA = data_directory(ROOT)
 TOKEN = secrets.token_urlsafe(32)
-LOCK = threading.Lock()
+LOCK = threading.RLock()
+PAYMENT_LOCK = threading.Lock()
 STATE = {'router':None,'plan':None,'host':None,'demo':False,'identity':None}
 
 import backups
@@ -178,8 +179,20 @@ def ticket_action(r,data):
     return {'ok':True,'journal':journal['id'],'action':action}
 
 def voucher_archive():
-    if STATE['demo']:return copy.deepcopy(STATE.setdefault('demo_vouchers',{}))
-    return VoucherHistory(DATA/'vouchers',STATE.get('location_id') or STATE['host'],STATE['identity']).read()
+    records=copy.deepcopy(STATE.setdefault('demo_vouchers',{})) if STATE['demo'] else VoucherHistory(DATA/'vouchers',STATE.get('location_id') or STATE['host'],STATE['identity']).read()
+    from voucher_history import revoke
+    if STATE['demo']:journals=STATE.get('demo_journals',{}).values()
+    else:
+        journals=[]
+        for path in DATA.glob('*.json'):
+            try:journals.append(json.loads(path.read_text()))
+            except (ValueError,OSError):continue
+    changed=False
+    for journal in journals:
+        if not isinstance(journal,dict) or any(journal.get(k)!=STATE.get(k) for k in ('host','identity','location_id','demo')):continue
+        changed=revoke(records,[e for e in journal.get('entries',[]) if e.get('state')=='rolled-back']) or changed
+    if changed:save_voucher_archive(records)
+    return records
 
 def save_voucher_archive(records):
     if STATE['demo']:STATE['demo_vouchers']=copy.deepcopy(records)
@@ -214,15 +227,41 @@ def issue_payment(order):
     if not base or base.get('.id')!=order['profile_id'] or (order.get('profile_snapshot') and base!=order['profile_snapshot']):raise ValidationError('Paid profile changed. Review this order.')
     return route('/api/vouchers',order['config'],paid_order=order)
 
+class CloudTask:
+    def __init__(self,run):self.run=run
+
+def connection_guard(router):
+    from contextlib import contextmanager
+    @contextmanager
+    def guard():
+        with LOCK:
+            if STATE.get('router') is not router or STATE.get('demo'):
+                raise ValidationError('Router connection changed; payment remains pending for its original location.')
+            yield
+    return guard
+
+def reconcile_payments(store,router):
+    with PAYMENT_LOCK:
+        records=store.reconcile(issue_payment,connection_guard(router))
+    with LOCK:
+        if STATE.get('router') is not router:raise ValidationError('Connection changed while checking payments. Refresh the current location.')
+        return order_summaries(records.values())
+
+def order_summaries(rows):
+    return {'orders':[{k:v for k,v in x.items() if k not in ('merchant','config','profile_id','profile_snapshot')} for x in sorted(rows,key=lambda x:x['created'],reverse=True)]}
+
 def payment_worker():
     while True:
         time.sleep(30)
-        with LOCK:
-            if STATE.get('router') and not STATE.get('demo'):
-                try:payment_store().reconcile(issue_payment)
-                except Exception:pass
+        try:route('/api/payments/check',{})
+        except Exception:pass
 
 def route(path,data,paid_order=None):
+    # Prepare immutable cloud work under the state lock; run remote I/O after releasing it.
+    with LOCK:result=_route(path,data,paid_order)
+    return result.run() if isinstance(result,CloudTask) else result
+
+def _route(path,data,paid_order=None):
     if path=='/api/diagnostics/import':return diagnostics.import_file(data.get('text'),data.get('kind'))
     if path=='/api/diagnostics/ai':
         if data.get('share') is not True:raise ValidationError('Review the projected data and confirm sending it to OpenAI.')
@@ -230,7 +269,13 @@ def route(path,data,paid_order=None):
         if data.get('review_id') and (not review or review['id']!=data['review_id']):raise ValidationError('Collect a fresh diagnostic snapshot.')
         if not review:
             review=diagnostics.import_file(data.get('text'),data.get('kind'))
-        return llm_review.review(diagnostics.ai_payload(review))
+        payload=copy.deepcopy(diagnostics.ai_payload(review));review_id=data.get('review_id');router=STATE.get('router')
+        def analyze():
+            result=llm_review.review(payload)
+            with LOCK:
+                if review_id and (STATE.get('router') is not router or (STATE.get('diagnostic_review') or {}).get('id')!=review_id):raise ValidationError('Diagnostic review changed while AI was running. Collect a fresh snapshot.')
+            return result
+        return CloudTask(analyze)
     if path=='/api/backup/export':return backups.export(DATA)
     if path=='/api/backup/preview':
         bundle=backups.validate(data.get('backup'));current=backups.export(DATA)
@@ -324,7 +369,7 @@ def route(path,data,paid_order=None):
     if path=='/api/payments/list':
         if STATE['demo']:return {'orders':[],'notice':'Payment checkout requires a real router and payment provider credentials.'}
         rows=payment_store().store.read().values()
-        return {'orders':[{k:v for k,v in x.items() if k not in ('merchant','config','profile_id','profile_snapshot')} for x in sorted(rows,key=lambda x:x['created'],reverse=True)]}
+        return order_summaries(rows)
     if path=='/api/payments/create':
         if STATE['demo']:raise ValidationError('Real payments are unavailable in demonstration mode.')
         base=next((x for x in r.call('ip/hotspot/user/profile') if x.get('name')==data.get('profile')),None)
@@ -340,11 +385,24 @@ def route(path,data,paid_order=None):
             resource=r.call('system/resource');clock=router_clock(r,resource[0] if isinstance(resource,list) else resource)
             if not clock['verified']:raise ValidationError('Synchronize router time before selling tickets.')
             policy_from_form(cfg,clock['now']);expiry_profile(base,'00000000')
-        order=payment_store().create(data.get('email'),price,cfg,base['.id'],base,data.get('provider','paystack'),data.get('customer_name',''))
-        return {k:order[k] for k in ('reference','checkout_url','state','amount','currency','domain','provider')}
+        store=payment_store();request_data=copy.deepcopy(data);base=copy.deepcopy(base);price=copy.deepcopy(price)
+        def initialize():
+            with PAYMENT_LOCK:
+                order=store.create(request_data.get('email'),price,cfg,base['.id'],base,request_data.get('provider','paystack'),request_data.get('customer_name',''))
+            with LOCK:
+                if STATE.get('router') is not r:raise ValidationError('Connection changed. Checkout was saved to its original location; reconnect there to retrieve it.')
+            return {k:order[k] for k in ('reference','checkout_url','state','amount','currency','domain','provider')}
+        return CloudTask(initialize)
     if path=='/api/payments/check':
-        if not STATE['demo']:payment_store().reconcile(issue_payment)
-        return route('/api/payments/list',{})
+        if STATE['demo']:return {'orders':[]}
+        store=payment_store()
+        return CloudTask(lambda:reconcile_payments(store,r))
+    if path=='/api/vouchers/validate-print':
+        tickets=data.get('tickets')
+        if not isinstance(tickets,list) or not 1<=len(tickets)<=100:raise ValidationError('Select 1–100 archived vouchers.')
+        available={(v['batch'],v['username']) for v in select_history(voucher_archive())}
+        if any(not isinstance(v,dict) or not isinstance(v.get('batch'),str) or not isinstance(v.get('username'),str) or (v['batch'],v['username']) not in available for v in tickets):raise ValidationError('One or more tickets were revoked or are unavailable. Reload saved vouchers before printing.')
+        return {'ok':True}
     if path=='/api/vouchers/history':
         return {'batches':history_summaries(voucher_archive())}
     if path=='/api/vouchers/reprint':
@@ -450,7 +508,8 @@ def route(path,data,paid_order=None):
         if not router_clock(r,resource)['verified']:raise ValidationError('Enable and synchronize router NTP before installing the expiry engine.')
         operations=engine_operations(r)
         journal=new_journal('expiry-engine')
-        execute(r,operations,journal)
+        from expiry import install_engine
+        install_engine(r,operations,journal)
         return {'ok':True,'count':len(operations),'journal':journal['id']}
     if path=='/api/vouchers':
         profile=data.get('profile'); server=data.get('server')
@@ -546,6 +605,9 @@ def route(path,data,paid_order=None):
         if journal['kind']=='ticket-action':raise ValidationError('Ticket actions have no automatic rollback. Use the explicit enable/disable controls.')
         if journal['kind']=='expiry-engine' and any(str(x.get('comment','')).startswith('ns2,') for x in r.call('ip/hotspot/user')):
             raise ValidationError('Managed tickets still depend on the expiry engine. Do not remove it while those tickets exist.')
+        from voucher_history import revoke
+        records=voucher_archive()
+        if revoke(records,journal['entries']):save_voucher_archive(records)
         rollback(r,journal['entries'],journal['save'])
         return {'ok':True,'uncertain':sum(x['state']=='uncertain' for x in journal['entries'])}
     raise ValidationError('Unknown operation.')
@@ -579,7 +641,7 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<length<(backups.LIMIT*2 if self.path in ('/api/backup/preview','/api/backup/restore') else 524288 if self.path in ('/api/diagnostics/import','/api/diagnostics/ai') else 131072): raise ValidationError('Request size invalid.')
             data=json.loads(self.rfile.read(length))
             if not isinstance(data,dict): raise ValidationError('JSON object required.')
-            with LOCK: result=route(self.path,data)
+            result=route(self.path,data)
             self.send(200,result)
         except (ValidationError,ValueError,KeyError,TypeError) as e:
             self.send(400,{'error':str(e),'journal':(STATE.get('last_journal') or {}).get('id')})

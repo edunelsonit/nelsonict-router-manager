@@ -31,3 +31,5 @@ The model returns findings and identifiers of server-generated supported fixes. 
 Change history records intent and before/after values before mutation. Repair journals are not automatically reversible: restoring an expired account or recreating disconnected sessions would be unsafe. Use the retained journal and router backup for deliberate manual recovery. Application backups do not replace router backups.
 
 Automated tests use a simulated router and mocked AI responses. Real RouterOS hardware, browser interaction and live model calls still require acceptance testing.
+
+Diagnostic JSON schema version 1 preserves validated expiry metadata and boolean script/hook presence indicators when reimported. Earlier projected JSON remains supported. Imported evidence cannot authorize router changes. AI waits no longer block owner controls; results for a replaced live review are discarded.

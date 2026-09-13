@@ -6,6 +6,10 @@
 
 The Python/backend and browser architecture is appropriate for a small, local, single-owner management application. The major remaining problem is consistency between ticket lifecycle, actual router state and business records, together with insufficient hardware evidence. A language rewrite would not resolve these issues.
 
+## Remediation update — 13 September 2026
+
+F1, F2, F3 and F5 below have now been addressed in code with regression coverage. See the README review-fixes section for the required router script upgrade and lifecycle/concurrency details. F4 (setup fingerprint dependencies), F6 (setup prerequisites) and broader integration/hardware recommendations remain open. The findings below retain the original audit evidence.
+
 ## Evidence and limits
 
 Reviewed the setup planner, router transports, expiry implementation, diagnostic/AI path, User Manager controls, payment adapters and issuance, sales/archives, backup/restore, portal/template workflow, browser integration, packaging and release documentation. Reran all **156 Python tests**, successfully, plus syntax checks for all browser JavaScript files. Used the demonstration router and direct evaluator calls to reproduce the findings identified below. These were isolated checks; no live router, customer account or payment was changed.

@@ -4,6 +4,18 @@ A local MikroTik management application for **Nelsonict Services Limited**: conn
 
 **Version 0.4.0 — pilot, not a production-certified release.** Targets RouterOS v7 API and REST services. RouterOS **7.24.2 is the requested compatibility target and has not been verified on hardware**. The official changelog page available during development did not establish that exact release. No real router was connected during development.
 
+
+## Review fixes — 13 September 2026
+
+- Startup expiry now shortens a previously stored next-day fallback when an earlier next-day boot requires expiry at boot +10 minutes. It never extends the stored deadline or re-enables expired accounts.
+- **Existing installations:** update the application, connect with NTP synchronized, then use **Vouchers & users → Review / install engine**. Review the listed scheduler/profile changes and install them. Exact known previous Nelsonict scheduler and login-hook sources are upgraded; custom scripts are not overwritten. Updating desktop files alone does not update router scripts.
+- Rollback marks affected archived vouchers revoked before attempting router deletion. Revoked stock is excluded from saved reprints and sellable inventory; recorded sales remain in reports. Older successful rollback journals are reconciled when their location archive loads. Keep those journals when migrating old installations. Failed rollback leaves affected stock quarantined until manually reconciled.
+- The Print button revalidates archived tickets, and rollback clears the current browser preview. Previously downloaded files or printed tickets cannot be recalled. Deletions made independently in WinBox still require reconciliation; this fix covers application rollback and retained rollback journals.
+- Diagnostic schema version 1 retains validated expiry metadata and script/hook presence flags on JSON roundtrip. Legacy projections remain readable. RSC import keeps only parsed managed-policy metadata and presence flags, without retaining secrets or script bodies.
+- AI and provider calls run outside the router-operation lock. Payment processing has a separate serialization lock; issuance rechecks the captured router connection under the state lock. Switching away leaves unissued orders pending at their original location. Checkout initialization results remain saved there. Stale AI results are rejected, and browser controls remain usable while cloud calls wait.
+
+All 170 Python tests, JavaScript syntax checks and a frontend concurrency regression passed locally. Real RouterOS script execution, physical reboot behavior and live provider acceptance still require hardware testing.
+
 ## Features at a glance
 
 | Area | Available now |
@@ -266,7 +278,7 @@ node --check web/table-utils.js
 
 Node is optional and only needed for the JavaScript syntax check. GitHub Actions includes Python checks on Ubuntu and Windows. A successful simulation test does not establish MikroTik compatibility.
 
-**Last recorded local checks:** 156 Python tests passed, frontend syntax and navigation checks passed, and the DEB built, extracted and passed an entrypoint smoke check. Windows EXE build/launch, installed desktop launch, browser visual checks, real-router expiry and live AI/payment acceptance remain unverified. These are recorded local results, not a claim that GitHub CI or hardware certification passed. See [VALIDATION.md](VALIDATION.md).
+**Last recorded local checks:** 170 Python tests passed, frontend syntax and navigation checks passed, and the DEB built, extracted and passed an entrypoint smoke check. Windows EXE build/launch, installed desktop launch, browser visual checks, real-router expiry and live AI/payment acceptance remain unverified. These are recorded local results, not a claim that GitHub CI or hardware certification passed. See [VALIDATION.md](VALIDATION.md).
 
 See [ACCEPTANCE.md](ACCEPTANCE.md) for real-router release gates and [ROADMAP.md](ROADMAP.md) for the broader product plan.
 

@@ -30,3 +30,5 @@ Existing JSON archives and payment orders remain authoritative for issuance. The
 Backups include structured sales rows and restore them transactionally, alongside the existing application data. Never copy a live SQLite file as a substitute for the application backup. Stop the app before a full raw-directory migration, and preserve the payment order store separately. One backend process per data directory is supported. Removing or restoring an archive does not erase recorded sale history; inventory availability and historical reports can therefore differ.
 
 No staff identity/audit attribution is available in the current single-owner authentication model. Multi-user permissions, provider refunds, commissions, expenses and profit reports remain future work.
+
+Application rollback now quarantines its vouchers before deletion, excludes revoked entries from sellable stock and reprinting, and retains historical sales. Previously rolled-back entries are reconciled from the location's retained journals. Failed rollback requires manual reconciliation; it does not automatically return stock to sale.

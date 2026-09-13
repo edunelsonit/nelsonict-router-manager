@@ -68,3 +68,7 @@ All 148 Python tests and frontend JavaScript syntax checks passed. The DEB built
 ## Remote connection controls and User Manager
 
 Eight new tests cover the service/profile/limitation/user assignment sequence, redacted secrets, invalid menus and references, stale/replayed plans, connection changes and confirmation, update/delete settings, uncertain writes and encrypted-only public management. All 156 tests passed; JavaScript syntax, navigation/control references and the updated DEB build passed. Real RouterOS package/service behavior, RADIUS login/accounting/disconnect, cross-site networking and browser visual acceptance remain outstanding.
+
+## Four review regressions fixed
+
+Fourteen added Python tests cover midnight/reboot shortening, no revival/extension, exact legacy script upgrades, revoked inventory and preserved sales, old rollback migration, failed rollback quarantine, diagnostic roundtrip and malformed imports, slow AI and payment requests, connection switching, at-most-once issuance and the actual HTTP handler lock boundary. All 170 Python tests passed. The JavaScript VM regression confirms cloud calls leave owner controls usable and discard stale connection results. Browser syntax checks and the DEB build passed. Live-router/script and provider testing remain outstanding.

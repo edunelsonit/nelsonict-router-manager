@@ -28,7 +28,7 @@ def validate(bundle):
             for key,record in value.items():
                 if not isinstance(record,dict) or record.get('batch')!=key or not re.fullmatch('[0-9a-f]{8}',key) or not isinstance(record.get('created'),(float,int)) or not isinstance(record.get('vouchers'),list):raise ValidationError('Invalid voucher archive.')
                 for row in record['vouchers']:
-                    if not isinstance(row,dict) or row.get('batch')!=key or any(not isinstance(row.get(k),str) or not 1<=len(row[k])<=128 for k in ('username','password','profile')) or row.get('creation_state') not in ('pending','created','uncertain','not-created'):raise ValidationError('Invalid archived voucher.')
+                    if not isinstance(row,dict) or row.get('batch')!=key or any(not isinstance(row.get(k),str) or not 1<=len(row[k])<=128 for k in ('username','password','profile')) or (row.get('creation_state') not in ('pending','created','uncertain','not-created') or row.get('lifecycle','active') not in ('active','revoked')):raise ValidationError('Invalid archived voucher.')
     return bundle
 
 def export(root):
