@@ -264,14 +264,14 @@ def route(path,data,paid_order=None):
 def _route(path,data,paid_order=None):
     if path=='/api/diagnostics/import':return diagnostics.import_file(data.get('text'),data.get('kind'))
     if path=='/api/diagnostics/ai':
-        if data.get('share') is not True:raise ValidationError('Review the projected data and confirm sending it to OpenAI.')
+        if data.get('share') is not True:raise ValidationError('Review the projected data and confirm sending it to the selected AI provider.')
         review=STATE.get('diagnostic_review') if data.get('review_id') else None
         if data.get('review_id') and (not review or review['id']!=data['review_id']):raise ValidationError('Collect a fresh diagnostic snapshot.')
         if not review:
             review=diagnostics.import_file(data.get('text'),data.get('kind'))
         payload=copy.deepcopy(diagnostics.ai_payload(review));review_id=data.get('review_id');router=STATE.get('router')
         def analyze():
-            result=llm_review.review(payload)
+            result=llm_review.review(payload,provider=data['provider']) if 'provider' in data else llm_review.review(payload)
             with LOCK:
                 if review_id and (STATE.get('router') is not router or (STATE.get('diagnostic_review') or {}).get('id')!=review_id):raise ValidationError('Diagnostic review changed while AI was running. Collect a fresh snapshot.')
             return result

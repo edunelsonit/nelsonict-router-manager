@@ -88,7 +88,7 @@ Click **Open demonstration** to explore without touching any router. All demonst
 
 ## AI setup walkthrough
 
-Open **AI walkthrough** to collect and download a setup snapshot, inspect an imported `.rsc`/JSON export, and preview supported bulk ticket repairs. Optional OpenAI analysis requires backend environment variables `OPENAI_API_KEY` and `OPENAI_MODEL`, plus explicit confirmation before sharing the projected evidence. Local checks and repairs work without AI.
+Open **AI walkthrough** to collect and download a setup snapshot, inspect an imported `.rsc`/JSON export, and preview supported bulk ticket repairs. **Local GGUF is now the default AI option.** Run a GGUF chat model with llama.cpp on the backend computer, then select Local GGUF in the walkthrough. See [GGUF setup](GGUF.md) for the launch command, model alias, settings and troubleshooting. No cloud key is needed and local failures never fall back to OpenAI. The explicitly selected OpenAI alternative requires `OPENAI_API_KEY` and `OPENAI_MODEL`. Local checks and repairs still work without either model provider.
 
 Review and apply fixes for valid expiry comments, uptime limits, expired sessions and verified app-owned expiry automation. Select legacy tickets to preview and replace ordinary comments; managed expiry metadata stays protected. Missing activation dates require manual review. See [DIAGNOSTICS.md](DIAGNOSTICS.md) for configuration, supported repairs and limitations.
 
@@ -295,7 +295,8 @@ Set credentials in the **backend process environment**, then restart the app. No
 | Paystack | `PAYSTACK_SECRET_KEY` | Test/live mode follows the key prefix. |
 | Monnify | `MONNIFY_API_KEY`, `MONNIFY_SECRET_KEY`, `MONNIFY_CONTRACT_CODE`, `MONNIFY_REDIRECT_URL` | `MONNIFY_MODE` defaults to `test`; explicitly set `live` for live processing. Customer name is required. |
 | Flutterwave | `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_REDIRECT_URL` | Uses the v3 Standard checkout integration; test/live mode follows the key. |
-| Optional AI review | `OPENAI_API_KEY`, `OPENAI_MODEL` | Both are required for cloud analysis; local diagnostic checks remain available without them. |
+| Local GGUF analysis | Optional `NELSONICT_GGUF_PORT`, `NELSONICT_GGUF_MODEL` | Defaults: local port 8080 and alias `nelsonict-gguf`; run llama-server separately. |
+| Optional OpenAI analysis | `OPENAI_API_KEY`, `OPENAI_MODEL` | Required only when OpenAI is explicitly selected. |
 | Data directory | `NELSONICT_DATA_DIR` | Optional path override for all owner data; set it before starting the backend. |
 
 Redirect URLs must be HTTPS receipt/instruction pages you control. The app does not deploy those pages. A redirect does not authorize a voucher: the backend verifies payment reference, amount, currency, customer and provider mode before issuance. Customers receive the hosted checkout link, never the private owner launch URL. Checkout requires customer internet access; walled-garden provisioning is not included.
@@ -472,6 +473,7 @@ The linked legacy documentation warns that it is frozen; MikroTik directs reader
 | [Packaging](PACKAGING.md) | EXE/DEB builds, artifacts and data migration |
 | [Expiry](EXPIRY.md) | Ticket policies, activation records and clock behavior |
 | [Templates](TEMPLATES.md) | Ticket printing, saved batches and portal installation |
+| [Local GGUF](GGUF.md) | Offline model setup, runtime requirements and troubleshooting |
 | [AI walkthrough](DIAGNOSTICS.md) | Evidence sharing, supported repairs and comments |
 | [Payments](PAYMENTS.md) | Provider credentials and payment verification |
 | [Sales](SALES.md) | Inventory, cash entries and SQLite reports |

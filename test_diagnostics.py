@@ -62,12 +62,12 @@ class DiagnosticTests(unittest.TestCase):
         self.r.data['system/scheduler'].append({'.id':'*E','name':ENGINE_NAME,'comment':'Nelsonict expiry v2','on-event':SCHEDULER_SOURCE,'interval':'30s','disabled':'false','policy':'read,write'})
         self.assertFalse(any(f['kind']=='expiry-engine' for f in self.collect()['fixes']))
     def test_ai_no_key_and_sharing_guard(self):
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'','OPENAI_MODEL':''}):
+        with patch.dict(os.environ,{'NELSONICT_AI_PROVIDER':'openai','OPENAI_API_KEY':'','OPENAI_MODEL':''}):
             with self.assertRaises(ValidationError):llm_review.review({})
         with self.assertRaises(ValidationError):server.route('/api/diagnostics/ai',{'kind':'json','text':'{}'})
     def test_llm_contract_and_unsupported_fix_rejected(self):
         def reply(ids):return json.dumps({'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps({'summary':'Review','findings':[],'recommended_fix_ids':ids})}]}]}).encode()
-        with patch.dict(os.environ,{'OPENAI_API_KEY':'secret','OPENAI_MODEL':'configured-model'}),patch('llm_review.http.client.HTTPSConnection') as conn:
+        with patch.dict(os.environ,{'NELSONICT_AI_PROVIDER':'openai','OPENAI_API_KEY':'secret','OPENAI_MODEL':'configured-model'}),patch('llm_review.http.client.HTTPSConnection') as conn:
             response=conn.return_value.getresponse.return_value;response.status=200;response.read.return_value=reply(['allowed'])
             self.assertEqual(llm_review.review({'available_fixes':[{'id':'allowed'}]})['recommended_fix_ids'],['allowed'])
             body=json.loads(conn.return_value.request.call_args.kwargs['body']);self.assertFalse(body['store']);self.assertNotIn('secret',json.dumps(body))

@@ -4,7 +4,7 @@ Open **AI walkthrough** after connecting to a router, or use demonstration mode.
 
 1. Collect a read-only API snapshot. Leave profile and batch blank to inspect all tickets, or narrow the review. Unavailable menus are listed. Download the projected JSON for later review.
 2. Alternatively, import a JSON snapshot or textual RouterOS `.rsc` export (maximum 256 KB). The RSC reader extracts supported configuration fields only; unsupported lines are omitted. It never executes imported scripts. Imported evidence is read-only and cannot authorize router writes. This is a partial diagnostic projection, not a complete RouterOS export or backup.
-3. Inspect the evidence. For optional AI analysis, configure `OPENAI_API_KEY` and `OPENAI_MODEL` in the server process environment before launch. Choose an OpenAI model supporting the Responses API and structured outputs. Never put the key in router comments or browser files. Confirm the sharing checkbox, then request analysis.
+3. Inspect the evidence. For local AI analysis, run a GGUF chat model with llama.cpp and select **Local GGUF** (the default). Follow [GGUF.md](GGUF.md). OpenAI is an explicit alternative requiring `OPENAI_API_KEY` and `OPENAI_MODEL`. Confirm consent for the selected provider, then request analysis.
 4. Review recommendations and each selected repair's exact before/after values. Keep a separate router backup, confirm the backup checkbox, and type `APPLY FIXES` in the confirmation dialog.
 5. Collect a fresh snapshot after applying. Some repairs depend on restored expiry automation and therefore require a second review.
 
@@ -24,7 +24,7 @@ The ticket table allows selecting ordinary legacy comments and previewing a repl
 
 ## Data sharing and execution
 
-The owner can inspect real ticket names and comments locally. AI receives an allowlisted projection: ticket names become aliases; passwords, free-form comments and script bodies are omitted. Interface/profile names, network addresses and selected configuration fields remain visible, so inspect the projection before sharing. Do not place secrets in configuration names. Only the reviewed projection is sent to OpenAI, using `store: false`; this setting is not a promise of zero provider retention. See [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+The owner can inspect real ticket names and comments locally. AI receives an allowlisted projection: ticket names become aliases; passwords, free-form comments and script bodies are omitted. Interface/profile names, network addresses and selected configuration fields remain visible, so inspect the projection before sharing. Do not place secrets in configuration names. Local GGUF sends the projection only to the local llama-server. When OpenAI is explicitly selected, only the reviewed projection is sent to OpenAI, using `store: false`; this setting is not a promise of zero provider retention. See [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
 
 The model returns findings and identifiers of server-generated supported fixes. It cannot supply executable RouterOS commands. Live plans expire after ten minutes, are tied to the active location and are consumed before writes. The server checks fresh configuration and each target's original fields to reject stale changes. A failed or uncertain operation requires recollection, not a blind retry.
 
